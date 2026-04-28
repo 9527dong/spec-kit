@@ -1,0 +1,60 @@
+name: Sync Fork Main with Upstream
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync-main:
+    if: github.repository != 'github/spec-kit'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_TOKEN }}
+
+      - name: Configure upstream remote
+        run: |
+          if git remote get-url upstream >/dev/null 2>&1; then
+            git remote set-url upstream https://github.com/github/spec-kit.git
+          else
+            git remote add upstream https://github.com/github/spec-kit.git
+          fi
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream main
+        run: git fetch upstream main
+
+      - name: Restore workflow file and create sync commit
+        id: commit
+        run: |
+          before_sha="${GITHUB_SHA}"
+          workflow_path=".github/workflows/sync-upstream.yml"
+
+          git reset --hard upstream/main
+          mkdir -p "$(dirname "$workflow_path")"
+          git show "${before_sha}:${workflow_path}" > "${workflow_path}"
+
+          if git diff --quiet "${before_sha}" -- .; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git add "${workflow_path}"
+          git commit -m "chore: sync fork main with upstream"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Push fork main
+        if: steps.commit.outputs.changed == 'true'
+        run: git push origin HEAD:main --force
