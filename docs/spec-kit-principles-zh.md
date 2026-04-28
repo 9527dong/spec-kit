@@ -1,6 +1,6 @@
 # spec-kit 实现原理笔记（中文）
 
-> 本文整理 `specify init` + 9 条 `/speckit.*` 命令（constitution / specify / clarify / plan / tasks / analyze / checklist / implement / taskstoissues）的完整实现原理、**Extensions / Presets / Workflows 三条扩展线**、`**.specify/` 目录全景 + 4 级模板解析优先级栈**、`**specify` CLI 全部子命令**，以及 **spec-kit 仓库自身 CI/CD**，便于在阅读源码和日常使用时对照查阅。
+> 本文整理 `specify init` + 9 条 `/speckit.*` 命令（constitution / specify / clarify / plan / tasks / analyze / checklist / implement / taskstoissues）的完整实现原理、**Extensions / Presets / Workflows 三条扩展线**、**`.specify/` 目录全景 + 4 级模板解析优先级栈**、**`specify` CLI 全部子命令**，以及 **spec-kit 仓库自身 CI/CD**，便于在阅读源码和日常使用时对照查阅。
 >
 > 文档结构：第一 ~ 十章按 SDD 流水线顺序逐命令拆解；第十一章一张图串起全局；附录 A ~ E 补齐工程细节（CLI / 目录 / 扩展体系 / 边缘命令 / 仓库 CI）。
 
@@ -88,7 +88,7 @@
   - [十、`constitution.md` 的作用，以及与 `AGENTS.md` 的区别](#十constitutionmd-的作用以及与-agentsmd-的区别)
     - [10.1 它是项目的“宪法”而非“说明书”](#101-它是项目的宪法而非说明书)
     - [10.2 它具体承担什么](#102-它具体承担什么)
-    - [10.3 与 `AGENTS.md` / `CLAUDE.md` / `.cursor/rules/`\* 的区别](#103-与-agentsmd--claudemd--cursorrules-的区别)
+    - [10.3 与 `AGENTS.md` / `CLAUDE.md` / `.cursor/rules/*` 的区别](#103-与-agentsmd--claudemd--cursorrules-的区别)
     - [10.4 为什么不能用 `AGENTS.md` 替代](#104-为什么不能用-agentsmd-替代)
   - [十一、一张图串起各环节关系](#十一一张图串起各环节关系)
   - [附录 A：`specify` CLI 全貌](#附录-aspecify-cli-全貌)
@@ -140,8 +140,6 @@ flowchart TD
     R --> S["打印成功信息 + 下一步提示"]
 ```
 
-
-
 关键入口在 `src/specify_cli/__init__.py` 的 `init()` 函数（约 600 行）。与 "下载 + 解压" 那种纯搬运不同，它做了 **10 件有副作用的事**：
 
 1. **解析 + 校验 CLI flags**（`--ai` 与 `--integration` 互斥；`--ai-commands-dir` 只配 `generic`；`--branch-numbering` 仅能是 `sequential` 或 `timestamp` 等）
@@ -157,7 +155,6 @@ flowchart TD
 
 **关于 CLI flags 的完整清单**（2026-04 版本）：
 
-
 | Flag                           | 用途                 | 说明                         |
 | ------------------------------ | ------------------ | -------------------------- |
 | `--ai <key>`                   | 选 AI agent         | 28 个内置 key 之一（见 §1.3）      |
@@ -172,7 +169,6 @@ flowchart TD
 | `--ai-commands-dir <dir>`      | 自定义命令目录            | 仅 `--ai generic` 需要        |
 | `--ai-skills`                  | 强制以 skills 方式安装    | 对 `SkillsIntegration` 已是默认 |
 | `--integration-options "..."`  | 透传给 integration    | 每种 integration 自己声明接受哪些    |
-
 
 几个已 deprecated 的 flag（`--skip-tls` / `--debug` / `--github-token` / `--offline`）在源码里被标 `hidden=True`，新版本都已是 no-op——这是因为 **v0.x 中期开始资产改为"bundled"**（打在 wheel 里随 CLI 一起装），不再从 GitHub 下载，也就用不到网络配置选项。
 
@@ -192,7 +188,7 @@ flowchart TD
 
 **当前注册的 28 个 integration**（alphabetical，取自 `src/specify_cli/integrations/__init__.py`）：
 
-```
+```text
 agy, amp, auggie, bob, claude, codebuddy, codex, copilot, cursor-agent,
 forge, gemini, generic, goose, iflow, junie, kilocode, kimi, kiro-cli,
 opencode, pi, qodercli, qwen, roo, shai, tabnine, trae, vibe, windsurf
@@ -204,7 +200,6 @@ opencode, pi, qodercli, qwen, roo, shai, tabnine, trae, vibe, windsurf
 
 `CursorAgentIntegration` 的关键声明：
 
-
 | 属性                    | 值                                 | 含义                     |
 | --------------------- | --------------------------------- | ---------------------- |
 | `key`                 | `cursor-agent`                    | CLI 选择标识               |
@@ -214,7 +209,6 @@ opencode, pi, qodercli, qwen, roo, shai, tabnine, trae, vibe, windsurf
 | `registrar.extension` | `/SKILL.md`                       | 每条命令一个子目录 + `SKILL.md` |
 | `context_file`        | `.cursor/rules/specify-rules.mdc` | 全局规则锚点                 |
 | `requires_cli`        | `False`                           | 不需要额外 CLI              |
-
 
 ### 1.4 安装产物：`.cursor/` 与 `.specify/`
 
@@ -260,8 +254,8 @@ opencode, pi, qodercli, qwen, roo, shai, tabnine, trae, vibe, windsurf
 
 两边职责严格分工：
 
-- `**.cursor/**` → 给**具体 agent 用**的命令入口与规则锚点；换 agent（`specify integration switch`）会生成一套新的 agent 目录。
-- `**.specify/`** → **项目级共享基础设施**，与 agent 无关；换 agent 不动，这也是 spec-kit 能随时切 agent 的关键。
+- **`.cursor/`** → 给**具体 agent 用**的命令入口与规则锚点；换 agent（`specify integration switch`）会生成一套新的 agent 目录。
+- **`.specify/`** → **项目级共享基础设施**，与 agent 无关；换 agent 不动，这也是 spec-kit 能随时切 agent 的关键。
 
 关于每一项的详细说明、模板解析优先级，见 **附录 B：`.specify/` 目录全景**。
 
@@ -279,6 +273,7 @@ opencode, pi, qodercli, qwen, roo, shai, tabnine, trae, vibe, windsurf
   - `<!-- SPECKIT END -->`
 - `upsert_context_section()` 只会更新这对标记之间的内容，不会破坏用户在同一文件里写的其它个性化规则
 - 默认内容由 `IntegrationBase._build_context_section()` 生成，**固定的两行文字**：
+
   ```text
   For additional context about technologies to be used, project structure,
   shell commands, and other important information, read the current plan
@@ -316,8 +311,6 @@ flowchart LR
     C --> D[".cursor/skills/speckit-constitution/SKILL.md<br/>（Cursor 专属命令）"]
 ```
 
-
-
 ### 1.7 Manifest：可安全卸载与升级的基础
 
 为了避免以后“升级覆盖用户改动”或“卸载留下垃圾”，`IntegrationManifest` 会对每个被写入的文件记录**内容哈希**：
@@ -352,8 +345,6 @@ flowchart TD
     A -->|指令 agent 操作| B
     C -.->|init 时拷贝一次| B
 ```
-
-
 
 三层各司其职：
 
@@ -426,8 +417,6 @@ flowchart LR
     C -- "显式 Load" --> P
 ```
 
-
-
 1. **spec 模板自带"宪法化表达"**：`spec-template.md` + `specify.md` 的 Quick Guidelines 强制要求只写 WHAT、FR 可测试、Success Criteria 可度量且 technology-agnostic。这些要求和大多数项目 constitution 的通用条款高度同构。
 2. **质量 Checklist 是软门槛**：生成的 `requirements.md` 验证项（"No implementation details"、"Requirements are testable and unambiguous"、"Success criteria are technology-agnostic"）本身就是宪法语义的下沉。
 3. **handoff 到 `/speckit.plan`**：真正"审判宪法"由下一棒完成（`plan.md` 命令模板第 2 步显式 `Read FEATURE_SPEC and /memory/constitution.md`）。
@@ -455,8 +444,7 @@ specs/003-user-auth/
 
 这是"**一 feature 一自治目录**"的设计：每个 feature 拥有完整上下文、可单独交付、可单独归档、可并行推进，多个 feature 互不污染。
 
-`**NNN-<short-name>` 前缀的五个收益**：
-
+**`NNN-<short-name>` 前缀的五个收益**：
 
 | 收益            | 具体机制                                                                                               |
 | ------------- | -------------------------------------------------------------------------------------------------- |
@@ -465,7 +453,6 @@ specs/003-user-auth/
 | **跨分支追溯**     | 编号是全局递增的（扫描本地分支 + `git ls-remote` 取最大值 + 1），不会和已 merge 的老 feature 冲突                               |
 | **目录 ≠ 分支**   | 多个 git 分支可以同时挂在同一 spec（如 `004-fix-bug` 和 `004-add-feature`），`find_feature_dir_by_prefix` 按数字前缀模糊匹配 |
 | **GitHub 兼容** | 强制检查 ≤ 244 字节（`MAX_BRANCH_LENGTH`），超过自动截断                                                          |
-
 
 short-name 由 `scripts/bash/create-new-feature.sh` 的 `generate_branch_name()` 生成：小写化 → 去非字母数字 → 过滤停用词（`the/to/for/want/add/...`）→ 取前 3-4 个"有意义"的词 → 用 `-` 连接，并保留大写缩写（OAuth/API/JWT）。
 
@@ -493,8 +480,6 @@ flowchart TD
     M --> N["FEATURE_DIR = specs/BRANCH_NAME"]
 ```
 
-
-
 几个值得注意的实现细节：
 
 - `number=$((10#$number))`：显式十进制解析，避免 `010` 被 shell 当成 8 进制。
@@ -504,13 +489,11 @@ flowchart TD
 
 **实际支持的三种分支命名形态**（由 `common.sh::check_feature_branch` 验证，`spec_kit_effective_branch_name` 归一化）：
 
-
 | 形态             | 示例                                              | 说明                                           |
 | -------------- | ----------------------------------------------- | -------------------------------------------- |
 | **sequential** | `001-user-auth`、`1234-refactor`                 | `--branch-numbering sequential`（默认），≥3 位数字前缀 |
 | **timestamp**  | `20260319-143022-user-auth`                     | `--branch-numbering timestamp`，冲突概率极低        |
 | **gitflow**    | `feat/004-user-auth`、`hotfix/20260319-143022-x` | 单层前缀会被剥离成 `004-user-auth`，与 GitFlow 工作流共存    |
-
 
 非 git 仓库下，`check_feature_branch` 会打印 warning 但**不阻断流程**：此时 `get_current_branch()` 退化为"扫 `specs/` 目录取最新子目录名"，保证非 git 场景下 `/speckit.plan` 等命令仍能工作（参见附录 B）。
 
@@ -545,13 +528,11 @@ flowchart TD
 
 > "The spec directory and file are always created by this command, never by the hook. Branch creation is handled by the `before_specify` hook (git extension)."
 
-
 | 动作                                   | 谁负责                                                               |
 | ------------------------------------ | ----------------------------------------------------------------- |
 | 创建 git 分支                            | `extensions/git/` 的 `before_specify` hook → `speckit.git.feature` |
 | 创建 spec 目录 + 拷贝模板 + 写 `feature.json` | `/speckit.specify` 本身（不可外包）                                       |
 | Commit 变更                            | `after_specify` hook（可选）                                          |
-
 
 即便用户没装 git 扩展、甚至没 git 仓库，`/speckit.specify` 依然能工作——**目录创建不依赖 git**。
 
@@ -605,8 +586,6 @@ sequenceDiagram
     A->>H: 执行 after_specify（可选 commit）
 ```
 
-
-
 ### 3.7 不同 agent 下的 frontmatter 与 handoff 差异
 
 **一个重要事实**：`templates/commands/specify.md` 源模板里的 `handoffs` 字段**在 Cursor 下并不出现在生成物中**。这是 integration 渲染路径的差异：
@@ -619,8 +598,6 @@ flowchart LR
     C -->|"MarkdownIntegration 子类<br/>(Forge)"| O2[".forge/commands/specify.md<br/>显式 strip handoffs<br/>（否则 Forge 会 hang）"]
     C -->|"SkillsIntegration<br/>(Cursor / Codex / Kimi)"| O3[".cursor/skills/speckit-specify/SKILL.md<br/>重建 frontmatter 只保留 4 个 key<br/>handoffs 被彻底丢弃"]
 ```
-
-
 
 关键代码在 `src/specify_cli/agents.py` 的 `render_skill_command()` / `build_skill_frontmatter()`：**SKILL.md 的 frontmatter 是"整块重建"的**，只从源 frontmatter 取 `description` 这一个字段，其它全部丢弃，然后用固定 4 个 key 重写：
 
@@ -641,14 +618,12 @@ Forge 的处理更直白，源码里注释写着：
 
 **各 agent 对比表**：
 
-
 | Agent                 | Integration 类型               | 生成物                              | handoffs 处理           | "下一步"如何呈现                   |
 | --------------------- | ---------------------------- | -------------------------------- | --------------------- | --------------------------- |
 | Claude Code           | `MarkdownIntegration`（无特殊处理） | `.claude/commands/*.md`          | **原样保留**              | Claude 读懂 frontmatter，结构化提示 |
 | Forge                 | 自定义 `MarkdownIntegration` 子类 | `.forge/commands/*.md`           | **显式 strip**（否则 hang） | body 末尾自然语言提示               |
 | Cursor / Codex / Kimi | `SkillsIntegration`          | `.cursor/skills/<name>/SKILL.md` | **重建时丢弃**             | body 末尾自然语言提示               |
 | Copilot / Gemini 等    | 其它 `MarkdownIntegration` 子类  | 各自目录                             | 原样保留（多数 agent 无视）     | 多数落到 body 末尾提示              |
-
 
 所以**在 Cursor 下**，`/speckit.specify → /speckit.plan` 的"接力"不是 frontmatter 级的结构化 handoff，而是**靠 SKILL.md body 末尾的自然语言提示 + 用户手动输入下一个命令**完成的。`specify.md` body 的 Step 8 显式写了：
 
@@ -678,8 +653,6 @@ flowchart LR
     S1 -. "也可以直接跳过 clarify<br/>（会被显式 warn）" .-> S2
 ```
 
-
-
 它是**可选但强烈建议**的一棒：
 
 - `clarify.md` 开头写得很直白：*"This clarification workflow is expected to run (and be completed) BEFORE invoking `/speckit.plan`. If the user explicitly states they are skipping clarification ..., you may proceed, but **must warn that downstream rework risk increases**."*
@@ -689,20 +662,18 @@ flowchart LR
 
 这是最关键的对比，放在前头。
 
-
 | 维度           | `/speckit.specify` 的 3 问                            | `/speckit.clarify`                                                                |
 | ------------ | --------------------------------------------------- | --------------------------------------------------------------------------------- |
 | **触发时机**     | spec 首次生成后立即自检                                      | 用户主动发起，spec 已存在                                                                   |
 | **扫描方式**     | 只看模板里**显式留下的 `[NEEDS CLARIFICATION]` 标记**           | **主动扫描整份 spec**，按 11 类 taxonomy 评估 Clear / Partial / Missing                      |
 | **问题上限**     | **≤3 个**                                            | **≤5 个**                                                                          |
 | **提问方式**     | **一次性把所有问题呈上**（批量）                                  | **逐条提问（sequential）**，一次只出一题                                                       |
-| **AI 是否给推荐** | 否，只列 A/B/C/Custom                                   | **会**，每题有 `**Recommended:`** / `**Suggested:`** 带理由；用户可回 "yes"/"recommended" 直接采纳 |
+| **AI 是否给推荐** | 否，只列 A/B/C/Custom                                   | **会**，每题有 `**Recommended:**` / `**Suggested:**` 带理由；用户可回 "yes"/"recommended" 直接采纳 |
 | **答案类型**     | 多选 + Custom 自由填                                     | 多选（2-5 项，互斥）或短答（≤5 词）                                                             |
 | **写入位置**     | 直接替换原 `[NEEDS CLARIFICATION: ...]` 内联标记             | 专门的 `## Clarifications` / `### Session YYYY-MM-DD` 段，**追加历史审计线索**；同时分发到对应章节       |
 | **整合时机**     | 所有答案收齐后一次性更新 + 重跑 Quality Checklist                 | **每收到一个答案立即 atomic overwrite 写盘**（降低上下文丢失风险）                                      |
 | **优先级启发式**   | `scope > security/privacy > UX > technical details` | `Impact × Uncertainty`，跨 11 类 taxonomy 做覆盖率平衡                                     |
 | **覆盖率报告**    | 生成 `checklists/requirements.md` + pass/fail         | 输出 Coverage Table（Resolved / Deferred / Clear / Outstanding）                      |
-
 
 **一句话区分**：
 
@@ -758,8 +729,6 @@ mindmap
       模糊形容词 robust/intuitive
 ```
 
-
-
 对每一类，AI 给 spec 打一个 `Clear / Partial / Missing` 的标签，生成**内部 coverage map**（不直接输出给用户），然后按 `Impact × Uncertainty` 启发式挑出前 5 个候选问题。
 
 几个值得注意的**约束规则**：
@@ -808,14 +777,13 @@ sequenceDiagram
     S->>A: Step 9 - after_clarify hook（可选 commit）
 ```
 
-
-
 ### 4.5 提问 UI 的三个硬约束
 
 `/speckit.clarify` 的问答格式被写得非常严格，这是为了保证回答的**可机器化录入**：
 
 1. **每题二选一格式**：要么多选（2-5 互斥选项，可加 `Short` 让用户自由填 ≤5 词），要么纯短答（`<=5 words`）。**不允许开放式讨论**。
 2. **AI 必须先给推荐**（新版本加的能力），带 1-2 句理由，格式固定：
+
   ```text
    **Recommended:** Option B - 基于 XXX 最佳实践，兼顾 YYY
 
@@ -828,7 +796,8 @@ sequenceDiagram
    You can reply with the option letter (e.g., "A"), accept the recommendation
    by saying "yes" or "recommended", or provide your own short answer.
   ```
-3. **永远不提前暴露后面的问题**（"Never reveal future queued questions in advance"）。
+
+1. **永远不提前暴露后面的问题**（"Never reveal future queued questions in advance"）。
 
 这三条组合起来，让每一轮答案都可以被确定性地解析和回写，**避免 spec 被自由文本污染**。
 
@@ -850,7 +819,6 @@ sequenceDiagram
 
 **② 把答案同时分发到对应章节**（修改原内容），分发规则是写死的：
 
-
 | 澄清类型                      | 分发目标                                                    |
 | ------------------------- | ------------------------------------------------------- |
 | Functional ambiguity      | 更新/新增 Functional Requirements 条目                        |
@@ -859,7 +827,6 @@ sequenceDiagram
 | Non-functional constraint | Success Criteria > Measurable Outcomes（把 "robust" 变成指标） |
 | Edge case / 负流程           | Edge Cases / Error Handling 新增条目                        |
 | Terminology conflict      | 全文统一术语；必要时保留 `(formerly referred to as "X")`            |
-
 
 **关键规则**：如果新答案使得某段早先的描述无效，**直接替换**而不是堆叠，保证 "no obsolete contradictory text"。
 
@@ -874,10 +841,9 @@ sequenceDiagram
 
 那它和宪法的联系是什么？**间接的**——它把 spec 清理干净，使得 `/speckit.plan` 的 Constitution Check 能拿到一份**不含模糊形容词、不含无效占位、测试条件可度量**的 spec，门槛检查才有依据。
 
-换句话说：`**/speckit.clarify` 是给 `/speckit.plan` 的 Constitution Check 喂"干净食材"的上游工序**。
+换句话说：**`/speckit.clarify` 是给 `/speckit.plan` 的 Constitution Check 喂"干净食材"的上游工序**。
 
 **常见边界行为**：
-
 
 | 情况                            | `/speckit.clarify` 的行为                                                                   |
 | ----------------------------- | ---------------------------------------------------------------------------------------- |
@@ -887,7 +853,6 @@ sequenceDiagram
 | 用户中途说 "done / stop / proceed" | 立即终止，已答问题仍保留，输出部分 Coverage 表                                                             |
 | 5 题用完但仍有高影响维度未决               | 明确列到 `Deferred` 段，并 recommend "post-plan 再跑一次 clarify"                                   |
 | 多次运行同一天                       | `### Session 2026-04-22` 可累加 bullet，审计线连续                                                |
-
 
 ---
 
@@ -913,8 +878,6 @@ flowchart LR
     S1 -. 跳过 clarify .-> P
 ```
 
-
-
 它的职责边界非常清晰，`plan.md` 命令模板里原话：
 
 > "Command ends after Phase 2 planning. Report branch, IMPL_PLAN path, and generated artifacts."
@@ -928,6 +891,7 @@ flowchart LR
 1. 用 `get_feature_paths()`（`common.sh`）走那条**四级优先级**解析出 feature 目录：环境变量 → `.specify/feature.json` → git 分支前缀
 2. `cp .specify/templates/plan-template.md → specs/<feature>/plan.md`（把骨架拷过来）
 3. 输出 JSON：
+
   ```json
    {
      "FEATURE_SPEC": "specs/003-user-auth/spec.md",
@@ -980,10 +944,7 @@ flowchart TD
     VIO2 -->|是| JST1
 ```
 
-
-
 三个阶段的职责严格分层：
-
 
 | 阶段          | 输入                        | 产物                                                                  | 关键约束                                             |
 | ----------- | ------------------------- | ------------------------------------------------------------------- | ------------------------------------------------ |
@@ -991,20 +952,17 @@ flowchart TD
 | **Phase 0** | Technical Context 里的未知项   | `research.md`                                                       | 必须把所有 `NEEDS CLARIFICATION` 变成 Decision          |
 | **Phase 1** | research.md + spec.md     | `data-model.md` / `contracts/` / `quickstart.md` + 更新 agent context | 设计完成后重跑 Constitution Check                       |
 
-
 ### 5.4 Phase 0：Outline & Research
 
 这一阶段的本质是**把所有未决技术选型定下来**，但不是瞎定——每个选择都要有依据。
 
 **① 研究任务的派发规则**。agent 会从 Technical Context 里抽出三类"待查项"：
 
-
 | 来源                          | 派发的研究任务                                      |
 | --------------------------- | -------------------------------------------- |
 | 每个 `NEEDS CLARIFICATION` 标记 | "Research {unknown} for {feature context}"   |
 | 每个依赖库                       | "Find best practices for {tech} in {domain}" |
 | 每个集成点                       | "Find patterns for {integration}"            |
-
 
 然后**为每一项派发独立的研究任务**（在 Cursor 下就是 agent 在同一会话里串行思考 / 查阅）。
 
@@ -1028,7 +986,6 @@ flowchart TD
 
 **② `contracts/`**：多态的目录，格式完全取决于项目类型：
 
-
 | 项目类型         | `contracts/` 里放什么                      |
 | ------------ | -------------------------------------- |
 | Web service  | OpenAPI / gRPC proto / REST endpoint 表 |
@@ -1037,7 +994,6 @@ flowchart TD
 | Parser / DSL | Grammar 定义、token 表                     |
 | 桌面 / 移动 APP  | UI 契约、IPC schema                       |
 | 纯内部脚本        | **跳过**（spec-kit 允许这一栏空）                |
-
 
 **③ `quickstart.md`**：给别人（或未来的自己）一份"从 0 跑起来"的最小路径——依赖安装 → 启动命令 → 一个可验证的端到端样例。
 
@@ -1061,8 +1017,6 @@ flowchart LR
     A2 -.-> T2
 ```
 
-
-
 从此以后 Cursor 每次会话都会带上"指向 003-user-auth/plan.md 的路牌"，后续 `/speckit.tasks`、`/speckit.implement` 自动拿到当前设计上下文。
 
 `__CONTEXT_FILE__` 是占位符，在生成 SKILL.md 时被 `IntegrationBase.process_template()` 替换成当前 integration 的 `context_file`（Cursor 就是 `.cursor/rules/specify-rules.mdc`）。这是"通用模板 → agent 专属指令"转换的一个典型例子。
@@ -1075,12 +1029,10 @@ flowchart LR
 
 **两次门槛评估**：
 
-
 | 时机                     | 检查什么                                                         | 为什么需要           |
 | ---------------------- | ------------------------------------------------------------ | --------------- |
 | **Gate #1**（Phase 0 前） | 初始 Technical Context 是否违反宪法原则                                | 在做研究之前就拦住错误方向   |
 | **Gate #2**（Phase 1 后） | 设计阶段是否**引入了新违规**（例如为了性能加了 4th project、用了 Repository pattern） | 防止研究 / 设计过程"滑坡" |
-
 
 **违规处理流程**：
 
@@ -1096,16 +1048,12 @@ flowchart TD
     Q -->|是| CT
 ```
 
-
-
 `plan-template.md` 末尾有一张专门的 "Complexity Tracking" 表：
-
 
 | Violation          | Why Needed       | Simpler Alternative Rejected Because |
 | ------------------ | ---------------- | ------------------------------------ |
 | 4th project        | current need     | why 3 projects insufficient          |
 | Repository pattern | specific problem | why direct DB access insufficient    |
-
 
 这是一个**显式、可审计的"破例记录"**。没有这张表、只有"代码里这样写更方便"这种借口的违规，会被直接 ERROR。
 
@@ -1163,8 +1111,6 @@ sequenceDiagram
     S->>A: Step 5 - after_plan hook（可选 commit）
 ```
 
-
-
 ### 5.8 产出清单与 plan.md 内部结构
 
 执行完后 `specs/<feature>/` 长这样：
@@ -1184,7 +1130,7 @@ specs/003-user-auth/
 └── tasks.md                # /speckit.tasks（本阶段不生成）
 ```
 
-`**plan.md` 内部结构**：
+**`plan.md` 内部结构**：
 
 ```text
 ## Summary                       ← 从 spec + research 提炼
@@ -1196,7 +1142,6 @@ specs/003-user-auth/
 
 ### 5.9 与前后命令的串联关系
 
-
 | 数据 / 文件                                         | 来自                                      | 被谁消费                                               |
 | ----------------------------------------------- | --------------------------------------- | -------------------------------------------------- |
 | `spec.md`（User Stories / FR / Success Criteria） | `/speckit.specify` + `/speckit.clarify` | `/speckit.plan` Phase 1 的 data-model.md 抽取         |
@@ -1205,7 +1150,6 @@ specs/003-user-auth/
 | `research.md`                                   | `/speckit.plan` Phase 0                 | `/speckit.analyze` 校验"所有选型有依据"                     |
 | `data-model.md` / `contracts/`                  | `/speckit.plan` Phase 1                 | `/speckit.tasks` 每条 contract / entity 通常对应 1-N 个任务 |
 | `.cursor/rules/specify-rules.mdc`               | `/speckit.plan` Phase 1 step 3 更新       | 后续所有 Cursor 会话常驻加载                                 |
-
 
 ### 5.10 为什么停在 Phase 1，不顺手把 tasks 生成了
 
@@ -1233,8 +1177,6 @@ flowchart LR
     P --> T --> I
     P -. 可选 .-> A -. 反馈 .-> T
 ```
-
-
 
 `/speckit.tasks` 是**从"设计产物"到"可执行任务清单"的翻译器**：
 
@@ -1273,8 +1215,6 @@ flowchart TD
     H1 --> S1 --> S2 --> S3 --> S4 --> S5 --> H2
 ```
 
-
-
 注意 Step 5 有一条 **"Format validation"**：显式要求**遍历全部 task，确认每条都满足 `checkbox + ID + [P?] + [Story?] + file path` 格式**，这一步保证粒度不会失控。
 
 ### 6.3 核心：任务组织的"三维切分"
@@ -1305,9 +1245,7 @@ flowchart TB
     end
 ```
 
-
-
-三个维度合起来给每个任务四个坐标：`**[TaskID] [P?] [Story?] Description with file path**`。
+三个维度合起来给每个任务四个坐标：**`[TaskID] [P?] [Story?] Description with file path`**。
 
 `tasks.md` 命令模板里的**格式铁律**（原文）：
 
@@ -1315,14 +1253,12 @@ flowchart TB
 
 并附带反面例子：
 
-
 | 示例                                                             | 是否合法                |
 | -------------------------------------------------------------- | ------------------- |
 | `- [ ] T012 [P] [US1] Create User model in src/models/user.py` | ✅                   |
 | `- [ ] T001 Create project structure per implementation plan`  | ✅（Setup 无 story 标签） |
 | `- [ ] Create User model`                                      | ❌ 缺 ID + Story      |
 | `- [ ] T001 [US1] Create model`                                | ❌ 缺文件路径             |
-
 
 ### 6.4 粒度怎么把握：六条约束压出的"甜区"
 
@@ -1351,7 +1287,6 @@ spec-kit 没有"一条任务多少行代码"这种粗暴阈值，它用**六个�
 
 **规则 3：Artifact 一一映射（粒度的骨架）**
 
-
 | 设计产物                          | 映射规则                                      | 典型粒度                                                                       |
 | ----------------------------- | ----------------------------------------- | -------------------------------------------------------------------------- |
 | 每条 **data-model.md 实体**       | 1 个 model 任务                              | `Create Xxx model in src/models/xxx.py`                                    |
@@ -1359,7 +1294,6 @@ spec-kit 没有"一条任务多少行代码"这种粗暴阈值，它用**六个�
 | 每个 **spec 里的 service**        | 1 个 service 任务                            | `Implement AuthService in src/services/auth.py`                            |
 | 每条 **functional requirement** | 至少 1 个实现任务                                | 视 FR 落地点而定                                                                 |
 | **research.md 的决策**           | → Setup 阶段配置 / 依赖任务                       | `Configure Redis client in src/config/redis.py`                            |
-
 
 这是一张**机械映射表**：有几个实体 / 契约 / 服务，就**刚好**有几个对应任务，不多不少。**粒度的"骨架"**就是靠这张表定下来的。
 
@@ -1407,8 +1341,6 @@ flowchart LR
     H -. 被规则 2、4 压下 .-> M
 ```
 
-
-
 经验数：**一个中等规模 feature 生成 20–50 个任务，其中 30–60% 能带 `[P]` 并行**——这就是 spec-kit 刻意标定的"甜区"。
 
 ### 6.5 完整执行时序
@@ -1446,8 +1378,6 @@ sequenceDiagram
     S->>A: Step 6 - after_tasks hook
 ```
 
-
-
 ### 6.6 一句话总结粒度控制策略
 
 > `/speckit.tasks` 的粒度**不是靠经验拍脑袋**，而是靠「**文件路径锚定**」做粒度下限、「**[P] 并行约束**」做粒度上限、「**Artifact 一一映射**」做骨架数量、「**Phase + Checkpoint 隔离**」做语义聚合、「**LLM 可独立执行**」做可行性底线。**五条约束正交叠加**，把每个任务压进"**一个文件 × 一个明确产物 × LLM 一次可完成**"这个甜区，既不会碎成无意义的小片，也不会胖成跨文件的模糊大任务。
@@ -1462,14 +1392,12 @@ Extensions 机制就是 spec-kit 刻意把这类**可选、可插拔的工作流
 
 ### 7.1 为什么需要 extensions
 
-
 | 问题                        | 没有 extensions 会怎样 | Extensions 的回答                                  |
 | ------------------------- | ----------------- | ----------------------------------------------- |
 | 核心命令会不会越长越臃肿？             | 每加一个小工作流就改核心模板    | 核心永远只有那几条命令；新功能只是**装一个包**                       |
 | 不同团队需求差异大                 | 核心必须做妥协，要么全有要么全无  | 团队按需组合：写 Web 服务装 git + issue 同步，写 CLI 只装 git    |
-| 想加一个**"命令前 / 命令后"**的自动化步骤 | 得改核心命令模板          | **hooks 机制**注入 `before_`* / `after_`*，核心命令*零感知* |
+| 想加一个**"命令前 / 命令后"**的自动化步骤 | 得改核心命令模板          | **hooks 机制**注入 `before_*` / `after_*`，核心命令*零感知* |
 | 第三方想贡献能力                  | 必须 PR 到主仓         | 独立仓库 + catalog 条目，`specify extension add` 一键装   |
-
 
 ### 7.2 不装 vs 装（以 `git` extension 为例）
 
@@ -1490,8 +1418,6 @@ flowchart LR
     note1["⚠️ 全程没有 git 分支隔离<br/>⚠️ 各阶段产物不自动 commit<br/>⚠️ 要手动 git checkout -b / git add / git commit"]
     C -.- note1
 ```
-
-
 
 你要自己记得：
 
@@ -1532,10 +1458,7 @@ flowchart LR
     style DH1 fill:#fff9c4
 ```
 
-
-
 **具体有什么变化**：
-
 
 | 行为           | 不装 extensions                | 装了 `git` extension                                                                                                             |
 | ------------ | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -1544,7 +1467,6 @@ flowchart LR
 | 阶段性 commit   | 手动 `git add && git commit`   | 每个命令执行后提示 *"Commit outstanding changes before plan?"*（`optional: true`，用户按 y 执行 `/speckit.git.commit`）                         |
 | 远端推送         | 手动                           | 新增 `/speckit.git.remote`、`/speckit.git.validate` 等辅助命令                                                                         |
 | 额外命令         | 只有核心 5 条                     | 新增 `speckit.git.feature` / `speckit.git.initialize` / `speckit.git.commit` / `speckit.git.validate` / `speckit.git.remote` 5 条 |
-
 
 → **用户视角**：核心命令用法完全不变，但每一步都被 git 能力"静默增强"了。
 
@@ -1575,7 +1497,7 @@ extensions/git/
         └── ...
 ```
 
-`**extension.yml` 是核心清单**，决定了这个 extension 被装进去后的一切行为。摘取 `git` extension 的关键段落：
+**`extension.yml` 是核心清单**，决定了这个 extension 被装进去后的一切行为。摘取 `git` extension 的关键段落：
 
 ```yaml
 schema_version: "1.0"
@@ -1624,14 +1546,12 @@ hooks:
 
 **关键字段说明**：
 
-
 | 字段                         | 含义                                                                   |
 | -------------------------- | -------------------------------------------------------------------- |
 | `provides.commands[].name` | **必须**符合正则 `^speckit\.[a-z0-9-]+\.[a-z0-9-]+$`，且中间段 = `extension.id` |
 | `hooks.<event>.command`    | 事件触发时执行哪条命令（可以是本 extension 或其他已装 extension 提供的命令）                    |
 | `hooks.<event>.optional`   | `false` = 自动执行（"mandatory pre-hook"）；`true` = 弹提示让用户确认               |
 | `hooks.<event>.condition`  | 可选的条件表达式，见 §7.6                                                      |
-
 
 `<event>` 支持的完整清单（来自命令模板的预检逻辑）：`before_constitution / before_specify / before_clarify / before_plan / before_tasks / before_implement / before_checklist / before_analyze / before_taskstoissues` 以及**每个 before_ 对应的 after_ 版本**。
 
@@ -1655,8 +1575,6 @@ flowchart LR
     C3 -. 可选覆盖 .-> U
     U --> R
 ```
-
-
 
 - **默认 catalog** 给企业/团队**自己维护**："只允许装这几个"，走审批流
 - **社区 catalog** 给好奇用户**看看市面上都有啥**（第三方提交 PR 进来）
@@ -1699,8 +1617,6 @@ flowchart TD
     D --> D1 & D2 & D3 & D4 & D5
     D --> E --> F --> G --> H --> I --> J
 ```
-
-
 
 **③ 管理**：
 
@@ -1765,9 +1681,7 @@ sequenceDiagram
     A->>S_commit: 执行 speckit.git.commit
 ```
 
-
-
-`**.specify/extensions.yml` 是 hook 中枢**，一个装了 `git` extension 的项目里它大概长这样：
+**`.specify/extensions.yml` 是 hook 中枢**，一个装了 `git` extension 的项目里它大概长这样：
 
 ```yaml
 installed:
@@ -1809,8 +1723,7 @@ hooks:
 
 **完整 hook 事件清单**（9 对 = 18 个事件，与 9 个核心命令对齐；取自 `extensions/git/extension.yml` 的实际声明）：
 
-
-| 命令                       | `before_`* 事件          | `after_*` 事件          |
+| 命令                       | `before_*` 事件          | `after_*` 事件          |
 | ------------------------ | ---------------------- | --------------------- |
 | `/speckit.constitution`  | `before_constitution`  | `after_constitution`  |
 | `/speckit.specify`       | `before_specify`       | `after_specify`       |
@@ -1822,11 +1735,9 @@ hooks:
 | `/speckit.implement`     | `before_implement`     | `after_implement`     |
 | `/speckit.taskstoissues` | `before_taskstoissues` | `after_taskstoissues` |
 
-
 最后一项 `/speckit.taskstoissues` 是**把 tasks.md 里的任务通过 GitHub MCP server 同步成 GitHub issues** 的特殊命令，主要供企业项目 / 团队协作场景使用；和它配套的 `before_/after_taskstoissues` 目前只有 `git` extension 在用（触发 auto-commit）。详见附录 D。
 
 **Skill 模式下的 invocation 渲染**。`HookExecutor._render_hook_invocation()` 会根据当前 agent 类型决定 hook 命令怎么"被 agent 调用"：
-
 
 | Agent                           | 渲染出的 invocation 字符串         |
 | ------------------------------- | --------------------------- |
@@ -1835,7 +1746,6 @@ hooks:
 | **Codex** (`ai-skills` 开)       | `$speckit-git-commit`       |
 | **Kimi**                        | `/skill:speckit-git-commit` |
 | **其他** / 无 skills               | `/speckit.git.commit`       |
-
 
 → 这是 extensions 和 integrations 解耦的接缝：同一个 hook，注册时用 `speckit.git.commit`，到不同 agent 眼里自动变成那个 agent 能听懂的调用形式。
 
@@ -1853,7 +1763,6 @@ hooks:
 
 **支持的表达式形式**（全部由 `HookExecutor._evaluate_condition()` 解析，不走 eval）：
 
-
 | 表达式                       | 含义                                |
 | ------------------------- | --------------------------------- |
 | `config.xxx.yyy is set`   | 该 extension 的 config 文件里存在这个键且非空  |
@@ -1862,7 +1771,6 @@ hooks:
 | `env.VAR_NAME is set`     | 环境变量存在                            |
 | `env.VAR_NAME == 'value'` | 环境变量等于某值                          |
 | `env.VAR_NAME != 'value'` | 环境变量不等于某值                         |
-
 
 **注意**：命令模板里的 Pre-Execution Check 段落**不评估 condition**（原文：*"do not attempt to interpret or evaluate hook condition expressions"*）——condition 评估完全交给 `HookExecutor`。如果模板看到一个非空 `condition`，它会**直接跳过**，等到 agent 需要执行该 hook 时才由 Python 侧真正判断。这避免了 prompt 里混入不安全的表达式求值。
 
@@ -1920,11 +1828,9 @@ flowchart TD
     R6 --> R7
 ```
 
-
-
 **最顶层视角**：
 
-> spec-kit 本身只管好"**宪法 / 规格 / 澄清 / 计划 / 任务**"这条 SDD 主干；一切**面向具体工具栈的自动化**（git、jira、github issues、linear、mcp 服务等）都被下放到 extension 层。**核心命令永远保持对 extensions 的零感知**——它只是在固定时机广播 `before_`* / `after_`* 事件，由哪个 extension 接、接了做什么、要不要问用户，全都由项目里的 `.specify/extensions.yml` 决定。
+> spec-kit 本身只管好"**宪法 / 规格 / 澄清 / 计划 / 任务**"这条 SDD 主干；一切**面向具体工具栈的自动化**（git、jira、github issues、linear、mcp 服务等）都被下放到 extension 层。**核心命令永远保持对 extensions 的零感知**——它只是在固定时机广播 `before_*` / `after_*` 事件，由哪个 extension 接、接了做什么、要不要问用户，全都由项目里的 `.specify/extensions.yml` 决定。
 
 这种设计让 spec-kit 可以同时满足两类使用者：
 
@@ -1953,10 +1859,7 @@ flowchart LR
     T -. 审前检查 .-> A -. 反馈 .-> T
 ```
 
-
-
 它和前面命令有**三条本质区别**：
-
 
 | 维度      | `/speckit.specify` ~ `/speckit.tasks`                  | `/speckit.implement`                          |
 | ------- | ------------------------------------------------------ | --------------------------------------------- |
@@ -1964,8 +1867,7 @@ flowchart LR
 | 需不需要审宪法 | plan 里做了两次 Constitution Check                          | **不再审宪法**（审判结果已固化在 plan + tasks 里）            |
 | 是否有状态回写 | 多为"一次成型"的文档产物                                          | **持续回写 tasks.md**：完成一条就把 `- [ ]` 改成 `- [X]`   |
 
-
-一句话：`**/speckit.implement` 是把 `tasks.md` 这张任务清单当成"持续消费 + 回写"的工作队列，驱动整个代码实现阶段**。
+一句话：**`/speckit.implement` 是把 `tasks.md` 这张任务清单当成"持续消费 + 回写"的工作队列，驱动整个代码实现阶段**。
 
 ### 8.2 命令签名与前置脚本
 
@@ -1978,12 +1880,10 @@ scripts:
 
 注意和前面命令的差异，这里多了两个旗标：
 
-
 | 旗标                | 作用                                                  |
 | ----------------- | --------------------------------------------------- |
 | `--require-tasks` | **tasks.md 不存在直接 ERROR 退出**，提示用户先跑 `/speckit.tasks` |
 | `--include-tasks` | 把 tasks.md 一起列进 `AVAILABLE_DOCS` 输出，下游读得到           |
-
 
 对比 `/speckit.plan` 只需要 spec、`/speckit.tasks` 要 plan+spec，`/speckit.implement` 的**硬依赖就是 tasks.md**：
 
@@ -2042,8 +1942,6 @@ flowchart TD
     S3 --> S4 --> S5 --> S6 --> S7 --> S8 --> S9 --> H2
 ```
 
-
-
 ### 8.4 Checklists 门禁：动手前最后一扇门
 
 这是 `/speckit.implement` **独有的机制**——执行前会先**扫所有 checklist 文件**，统计完成度，产出一张表：
@@ -2092,21 +1990,17 @@ flowchart TD
     L -->|是| N["只补齐缺失的关键 patterns"]
 ```
 
-
-
 **语言层面的 pattern** 由模板内置（摘关键几条）：
-
 
 | 栈            | 关键 patterns                                   |
 | ------------ | --------------------------------------------- |
-| Node.js / TS | `node_modules/`、`dist/`、`*.log`、`.env`*       |
+| Node.js / TS | `node_modules/`、`dist/`、`*.log`、`.env*`       |
 | Python       | `__pycache__/`、`*.pyc`、`.venv/`、`*.egg-info/` |
 | Java         | `target/`、`*.class`、`.gradle/`                |
 | Go           | `*.exe`、`*.test`、`vendor/`                    |
 | Rust         | `target/`、`*.rs.bk`、`.env*`                   |
 | Terraform    | `.terraform/`、`*.tfstate*`、`*.tfvars`         |
 | 通用           | `.DS_Store`、`Thumbs.db`、`.vscode/`、`.idea/`   |
-
 
 **为什么要管这事**？因为后续任务里会：
 
@@ -2134,8 +2028,6 @@ flowchart TD
     P4 -->|完成并验证| PN
 ```
 
-
-
 规则原文：
 
 > `Phase-by-phase execution: Complete each phase before moving to the next`
@@ -2162,10 +2054,7 @@ flowchart LR
     end
 ```
 
-
-
 具体规则：
-
 
 | 规则              | 说明                                                                                                            |
 | --------------- | ------------------------------------------------------------------------------------------------------------- |
@@ -2173,7 +2062,6 @@ flowchart LR
 | **TDD 先于实现**    | 同一 story 内，`Contract test` / `Integration test` 任务必须**先跑、先确保失败**，再做对应的 implementation                         |
 | **[P] 并行**      | 不同文件 + 无未完成依赖 → 可以一批并发（agent 实际是一次会话内串行思考 / 生成，但产物彼此独立）                                                       |
 | **每 Phase 验证点** | Phase 结束后检查 Checkpoint 要求（"User Story 1 should be fully functional and testable independently"），不满足不进下一 Phase |
-
 
 ### 8.7 状态回写：tasks.md 的"活心脏"
 
@@ -2205,8 +2093,6 @@ sequenceDiagram
     A->>T: 回写 T014: `- [X]`
 ```
 
-
-
 **这个机制带来什么好处**：
 
 1. **可中断可续跑**：中途停了或出错，下次再跑只需从下一条 `- [ ]` 继续，不会重做
@@ -2231,8 +2117,6 @@ flowchart TD
     PAR -->|是（并行）| CONT
 ```
 
-
-
 差别化处理的道理：
 
 - **串行任务失败** = 当前 Phase 的 checkpoint 走不过去了，硬停；否则后面的任务基础都不可靠
@@ -2242,14 +2126,12 @@ flowchart TD
 
 **Completion validation**（交付验证）。最后 agent 要逐项检查：
 
-
 | 项                | 检查方式                                                   |
 | ---------------- | ------------------------------------------------------ |
 | 所有 required 任务完成 | `tasks.md` 里没有未标 `[X]` 的条目（允许 optional 的 Polish 任务未完成） |
 | 实现与 spec 一致      | 交叉比对 `spec.md` 的 User Stories 和 FR，确认都有对应代码路径          |
 | 测试通过             | 跑 test 任务产出的测试，验证覆盖率达到 plan.md 里设的目标                   |
 | 与 plan 一致        | 目录结构、技术栈、契约与 `plan.md` 吻合                              |
-
 
 输出一个**最终总结**：完成的 story 列表、测试通过数、被跳过的 polish 任务（如有）、下一步建议（通常是 handoff 到 `/speckit.analyze` 或 `/speckit.git.commit`）。
 
@@ -2272,8 +2154,6 @@ sequenceDiagram
 
     Note over A: 典型：<br/>1) 分故事 commit<br/>2) 更新关联 issue 状态<br/>3) 触发 CI/CD
 ```
-
-
 
 这里是 **extensions 价值最高的事件槽**，因为 implement 阶段会产生**最多的文件变更**，自动 commit / issue 同步 / 触发 CI 都是团队高频诉求。很多实际项目把 `git` extension 的 `after_implement` 设成 `optional: false`（强制 commit），避免实现完忘了提交。
 
@@ -2306,8 +2186,6 @@ flowchart LR
     IMPL -. 持续回写 [X] .-> TASKS
 ```
 
-
-
 `tasks.md` 是**唯一双向的**文件——implement 既读它又写它；其它文件都是**只读输入**。
 
 ### 8.10 为什么它没有 Constitution Check
@@ -2322,7 +2200,7 @@ flowchart LR
 
 **一句话总结**：
 
-> `/speckit.implement` 是 SDD 流水线里**唯一真正改动源码的命令**，本质是"**以 tasks.md 为工作队列的状态机执行器**"——它用 **Checklists 门禁**作为动手前最后一扇门，用 **Phase-by-Phase + TDD + [P] 并行 + 文件串行** 四条规则串起执行顺序，用 `**- [ ] → [X]` 回写**把 tasks.md 变成"活状态"以支持中断续跑，并把 **ignore 文件维护**和 **Extensions hook（尤其是自动 commit）做进前后的"卫生准备"和"收尾动作"。它不再审宪法、不再做决策，只忠实地把 plan + tasks 审判过的设计翻译成真实代码**。
+> `/speckit.implement` 是 SDD 流水线里**唯一真正改动源码的命令**，本质是"**以 tasks.md 为工作队列的状态机执行器**"——它用 **Checklists 门禁**作为动手前最后一扇门，用 **Phase-by-Phase + TDD + [P] 并行 + 文件串行** 四条规则串起执行顺序，用 **`[ ] → [X]` 回写**把 tasks.md 变成"活状态"以支持中断续跑，并把 **ignore 文件维护**和 **Extensions hook（尤其是自动 commit）做进前后的"卫生准备"和"收尾动作"。它不再审宪法、不再做决策，只忠实地把 plan + tasks 审判过的设计翻译成真实代码**。
 
 ---
 
@@ -2334,13 +2212,11 @@ spec-kit 官方 README 把这三个命令标记为 *optional* ——意思是**�
 
 核心 SDD 流水线的最小集 `constitution → specify → plan → tasks → implement` 组成了“**决策 → 规格 → 设计 → 任务 → 实现**”的主干，本身已经能跑通。但真实项目还会遇到三类核心命令覆盖不到的问题：
 
-
 | 风险维度            | 核心命令做了什么                                                  | 还剩下什么没做                                                         |
 | --------------- | --------------------------------------------------------- | --------------------------------------------------------------- |
 | **需求本身有歧义**     | `/speckit.specify` 只做 3 问 validation，像“用户可以上传大文件”这种描述会被放行 | 没人逐项盘问“大”是多大、支持哪些格式、失败怎么处理                                      |
 | **跨文档不一致**      | `/speckit.plan` 只校验 plan 内部，`/speckit.tasks` 只校验 tasks 格式 | 没人把 **spec / plan / tasks 三份文档横向比对**，确认 FR-003 和 T015 是否讲的是同一件事 |
 | **要求的“质量”无法量化** | 核心命令会检查“该填的段落有没有填”                                        | 但没人检查这个段落**写得够不够好**——是否可测、是否无歧义、是否覆盖边界                          |
-
 
 这三个可选命令就是针对这三个维度的“**质量保险层**”：
 
@@ -2371,10 +2247,7 @@ flowchart LR
     CH -. implement 门禁消费 .-> I
 ```
 
-
-
 ### 9.2 三个命令各自回答什么问题
-
 
 | 维度        | `/speckit.clarify`                           | `/speckit.analyze`                                     | `/speckit.checklist`                         |
 | --------- | -------------------------------------------- | ------------------------------------------------------ | -------------------------------------------- |
@@ -2386,30 +2259,29 @@ flowchart LR
 | **能否重跑**  | 可以，但每次再抛最多 5 个问题                             | 可以，**幂等**（相同输入产出一致）                                    | 可以，**追加到同一文件**（CHK001→CHK016 递增）             |
 | **运行时机**  | specify 之后、plan 之前                           | tasks 之后、implement 之前                                  | 任意时点，建议 implement 之前                         |
 
-
 一句话区分：
 
-- `**clarify` = 主动追问**，填 spec 里的坑（纵向、深挖单份文档）
-- `**analyze` = 横向审计**，找 3 文档之间的矛盾（横向、跨文档对比）
-- `**checklist` = 写作打分**，评估 requirements 本身写得够不够好（纵向、打质量分）
+- **`clarify` = 主动追问**，填 spec 里的坑（纵向、深挖单份文档）
+- **`analyze` = 横向审计**，找 3 文档之间的矛盾（横向、跨文档对比）
+- **`checklist` = 写作打分**，评估 requirements 本身写得够不够好（纵向、打质量分）
 
 ### 9.3 什么情况下应该使用
 
-`**/speckit.clarify` 用在**：
+**`/speckit.clarify` 用在**：
 
 - spec 初稿里随口一写的需求很多（“用户管理”“文件上传”“支付集成”——但没说多细）
 - feature 跨多个业务领域，怕有遗漏的边界条件
 - 必须**在 `/speckit.plan` 之前跑**：plan 需要确切上下文，spec 越干净，plan 的技术决策越不会"脑补"
 - 相对 `specify` 自带的 3 问 validation，它更**主动、更深入**（11 类 taxonomy、Impact × Uncertainty 排序）
 
-`**/speckit.analyze` 用在**：
+**`/speckit.analyze` 用在**：
 
 - `/speckit.tasks` 跑完后、`/speckit.implement` 动手前——这是**它唯一能跑的时机**（因为需要 tasks.md）
 - 团队协作项目：不同人改 spec / plan / tasks，怕漂移
 - 改过 spec 之后又跑过 plan 和 tasks，怀疑某些角落没同步
 - 上游宪法有新修订，要检查现有设计是否违反新原则
 
-`**/speckit.checklist` 用在**：
+**`/speckit.checklist` 用在**：
 
 - 有明确的质量维度需要**反复把关**（UX / 安全 / 性能 / 无障碍 / 合规）
 - 要过 PR review：让 reviewer 手头有一份"requirements quality 单元测试"可以逐项点
@@ -2442,8 +2314,6 @@ flowchart TD
     Q4 -->|MVP 探索| SKIP
 ```
 
-
-
 ### 9.4 如何融入 workflow
 
 按项目规模和质量要求，有三种常见组合：
@@ -2454,8 +2324,6 @@ flowchart TD
 flowchart LR
     I0["init"] --> C["constitution"] --> S["specify"] --> P["plan"] --> T["tasks"] --> IM["implement"]
 ```
-
-
 
 → 不碰 3 个可选命令，追求最快跑通。
 
@@ -2468,8 +2336,6 @@ flowchart LR
     style CL fill:#e1f5fe,stroke:#0288d1
     style AN fill:#fff9c4,stroke:#f9a825
 ```
-
-
 
 → `clarify` 修 spec 的坑，`analyze` 审三文档漂移，`implement` 前保底。
 
@@ -2490,8 +2356,6 @@ flowchart LR
     style CH3 fill:#fce4ec,stroke:#c2185b
     style AN fill:#fff9c4,stroke:#f9a825
 ```
-
-
 
 → 多份 checklist 从不同维度并行打分；`analyze` 是发版前最后一次横向审计。
 
@@ -2515,8 +2379,6 @@ flowchart LR
 
     S --> P --> T --> IM --> BUG
 ```
-
-
 
 **路径 B：跑 `/speckit.clarify`**——它按 11 类 taxonomy 扫 spec，挑出 5 个高 Impact × Uncertainty 的问题：
 
@@ -2654,8 +2516,6 @@ flowchart TB
     B2 --> C1
 ```
 
-
-
 **职责三角（易记版）**：
 
 ```text
@@ -2666,13 +2526,11 @@ checklist: spec/plan/tasks 任一份，纵向打分 —— 给写作质量打分
 
 **3 个典型反模式**：
 
-
 | 反模式                                                                   | 为什么错                                 | 正确做法                                |
 | --------------------------------------------------------------------- | ------------------------------------ | ----------------------------------- |
 | 把 `clarify` 放在 `plan` 之后                                              | 答案来不及喂给 plan，clarify 完还得再跑一次 plan    | 永远在 `specify` 后、`plan` 前跑           |
 | 用 `analyze` 替代**人工 PR review**                                        | analyze 是机械对比，抓不到“这个 UX 文案没体感”类的主观问题 | analyze 做机械层、人做主观层，互补               |
 | 把 `checklist` 写成 **implementation test**（Verify / Test / Confirm ...） | 就变成 QA 测试用例，和 spec 完全脱钩              | 始终用疑问句，问“**requirements 本身写得够清楚吗**” |
-
 
 ### 9.7 一句话总结
 
@@ -2687,7 +2545,7 @@ checklist: spec/plan/tasks 任一份，纵向打分 —— 给写作质量打分
 在 `spec-kit` 的命令模板里可以看到它被**强制引用**：
 
 - `plan` 阶段：必须读 `/memory/constitution.md`，并在 plan 里填 `Constitution Check`
-- `plan-template.md` 明确写：`*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.`*
+- `plan-template.md` 明确写：`*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*`
 - `analyze` 阶段：声明 `The project constitution is non-negotiable`，**冲突直接升级为 CRITICAL**
 - `tasks` 生成阶段会按原则追加任务（比如“可观测性任务”）
 
@@ -2703,8 +2561,7 @@ checklist: spec/plan/tasks 任一份，纵向打分 —— 给写作质量打分
 4. **版本化元信息**：`Version / Ratified / Last Amended`，把宪法做成**可追溯的制品**
 5. **被下游模板强制引用**：`plan`、`analyze`、`tasks` 都会 load 它
 
-### 10.3 与 `AGENTS.md` / `CLAUDE.md` / `.cursor/rules/`* 的区别
-
+### 10.3 与 `AGENTS.md` / `CLAUDE.md` / `.cursor/rules/*` 的区别
 
 | 维度        | `AGENTS.md` 等 agent 文件               | `constitution.md`                                |
 | --------- | ------------------------------------ | ------------------------------------------------ |
@@ -2717,7 +2574,6 @@ checklist: spec/plan/tasks 任一份，纵向打分 —— 给写作质量打分
 | 换 agent 后 | 可能要换格式/路径                            | 保留，属于项目资产                                        |
 | 文件位置      | 仓库根或 `.cursor/rules/` / `.claude/` 等 | `.specify/memory/`                               |
 | 格式        | 松散自由                                 | 占位符模板 + Governance 章节                            |
-
 
 直观例子：
 
@@ -2778,8 +2634,6 @@ flowchart TD
     B1 === B4
 ```
 
-
-
 ---
 
 ## 附录 A：`specify` CLI 全貌
@@ -2824,21 +2678,19 @@ specify
 
 几个容易被忽略但很有价值的子命令：
 
-- `**specify integration switch gemini**` —— 从 Cursor 切到 Gemini 而**不丢任何 `.specify/` 状态**（换 agent、不换项目）；这是 integrations/extensions 解耦的直接红利。
-- `**specify extension add <url-or-id>`** —— `<source>` 接受 catalog id、本地路径、zip URL 三种形态，让你可以先在本地写 extension 调通再发到 GitHub。
-- `**specify preset resolve spec-template**` —— 你想知道"此刻 `/speckit.specify` 实际用的哪份 `spec-template.md`？"这个命令会按**附录 B 的模板解析优先级栈**回答你。
-- `**specify workflow run speckit`** —— 直接跑 init 时自动装的 bundled `speckit` workflow（把 constitution → specify → clarify → plan → tasks → implement 串成一条自动化流水线，详见附录 C）。
+- **`specify integration switch gemini`** —— 从 Cursor 切到 Gemini 而**不丢任何 `.specify/` 状态**（换 agent、不换项目）；这是 integrations/extensions 解耦的直接红利。
+- **`specify extension add <url-or-id>`** —— `<source>` 接受 catalog id、本地路径、zip URL 三种形态，让你可以先在本地写 extension 调通再发到 GitHub。
+- **`specify preset resolve spec-template`** —— 你想知道"此刻 `/speckit.specify` 实际用的哪份 `spec-template.md`？"这个命令会按**附录 B 的模板解析优先级栈**回答你。
+- **`specify workflow run speckit`** —— 直接跑 init 时自动装的 bundled `speckit` workflow（把 constitution → specify → clarify → plan → tasks → implement 串成一条自动化流水线，详见附录 C）。
 
 CLI 与 `/speckit.*` 命令的分工：
-
 
 | 做什么                          | 靠                               |
 | ---------------------------- | ------------------------------- |
 | 管理项目脚手架、agent、插件、工作流         | `specify` CLI（本地终端）             |
 | 运行 SDD 主干工作流（宪法/规格/计划/任务/实现） | `/speckit.*` 命令（在 AI agent 会话里） |
 
-
-这也解释了一个常见困惑——`**specify init` 不是命令链的一部分**：它只在项目创建/维护时偶尔跑一次，真正日常用的是那 9 个 `/speckit.`* 命令。
+这也解释了一个常见困惑——**`specify init` 不是命令链的一部分**：它只在项目创建/维护时偶尔跑一次，真正日常用的是那 9 个 `/speckit.*` 命令。
 
 ---
 
@@ -2899,7 +2751,7 @@ CLI 与 `/speckit.*` 命令的分工：
 
 ### B.2 模板解析优先级栈（关键机制）
 
-几乎所有 `speckit.`* 命令在拷贝模板时都走同一个入口：`common.sh::resolve_template <name> <repo_root>`。它按 **4 级优先级** 找模板：
+几乎所有 `speckit.*` 命令在拷贝模板时都走同一个入口：`common.sh::resolve_template <name> <repo_root>`。它按 **4 级优先级** 找模板：
 
 ```mermaid
 flowchart TD
@@ -2912,14 +2764,11 @@ flowchart TD
     P3 -->|没| U4["✅ 回落到 .specify/templates/ 核心模板"]
 ```
 
-
-
 → 这就是**让同一条 `/speckit.specify` 在不同项目里产出不同 spec 结构**的秘诀。你不需要 fork spec-kit，只要把定制的 `spec-template.md` 放进 `.specify/templates/overrides/` 就能接管，升级 CLI 也不会被覆盖（Manifest 保护）。
 
 ### B.3 非 git 场景降级
 
 `common.sh` 里所有函数都做了 "**有 git 走 git、没 git 走文件系统**" 的双路径：
-
 
 | 场景            | 有 git                             | 无 git                      |
 | ------------- | --------------------------------- | -------------------------- |
@@ -2927,7 +2776,6 @@ flowchart TD
 | 校验分支命名        | 强校验 sequential/timestamp/gitflow  | 打 warning 但**不阻断**         |
 | 创建 feature 分支 | `git checkout -b`                 | 不创建分支，直接 mkdir             |
 | remote 编号避让   | `git ls-remote --heads`           | 跳过                         |
-
 
 加上 `SPECIFY_FEATURE` / `SPECIFY_FEATURE_DIRECTORY` 环境变量，spec-kit 可以在**完全没有 git 的目录**里跑通整条 SDD 流水线——这在 notebook、离线文档库、空白实验目录等场景里很有用。
 
@@ -2937,13 +2785,11 @@ flowchart TD
 
 第七章讲了 **Extensions**——加 hook、加命令。但 spec-kit 还有另外两套**同等重要但职责不同**的扩展机制：**Presets** 和 **Workflows**。三者关系：
 
-
 | 机制            | 改什么                              | 何时生效                        | 典型用法                                                   |
 | ------------- | -------------------------------- | --------------------------- | ------------------------------------------------------ |
-| **Extension** | 加新命令 + 在核心命令前后插 hook             | 运行时（`before_`* / `after_`*） | `git` 自动建分支/commit、`jira` 同步 issue                     |
+| **Extension** | 加新命令 + 在核心命令前后插 hook             | 运行时（`before_*` / `after_*`） | `git` 自动建分支/commit、`jira` 同步 issue                     |
 | **Preset**    | 替换 / 覆盖**模板**（spec/plan/tasks 等） | 模板解析时（见附录 B.2）              | 医疗合规 preset 换掉 spec-template、强制 HIPAA 章节               |
 | **Workflow**  | 编排一连串命令（含 AI 调用）成一条可恢复的流水线       | `specify workflow run`      | 一键跑完 constitution→specify→clarify→plan→tasks→implement |
-
 
 三者**可以同时存在**，互不冲突。
 
@@ -2969,7 +2815,7 @@ templates:
 
 安装到项目后在 `.specify/presets/healthcare-compliance/templates/` 下。下次任何 `/speckit.*` 命令拷贝 `spec-template.md` 时，按附录 B.2 的优先级栈，**医疗 preset 的版本会胜出**。
 
-`**{CORE_TEMPLATE}` 占位符**（很有用）：preset 的模板里可以写 `{CORE_TEMPLATE}`，在解析时被**核心模板的原文**替换——这意味着你可以写一份"**基础 + 企业补丁**"的 preset 而不是整个重写。例如：
+**`{CORE_TEMPLATE}` 占位符**（很有用）：preset 的模板里可以写 `{CORE_TEMPLATE}`，在解析时被**核心模板的原文**替换——这意味着你可以写一份"**基础 + 企业补丁**"的 preset 而不是整个重写。例如：
 
 ```markdown
 <!-- healthcare-compliance/templates/spec-template.md -->
@@ -2996,7 +2842,6 @@ templates:
 
 Workflow 最适合那些**步骤固定、参与人多、容易漏步骤、需要留下运行记录**的场景：
 
-
 | 场景              | 不用 workflow 时                             | 用 workflow 后                                                             |
 | --------------- | ----------------------------------------- | ------------------------------------------------------------------------ |
 | 新员工按 SDD 做第一个需求 | 需要人工记住每一步命令和参数，容易漏掉 plan/tasks 前的 review  | 只运行 `specify workflow run speckit --input spec="..."`，流程自动停在 review gate |
@@ -3005,8 +2850,7 @@ Workflow 最适合那些**步骤固定、参与人多、容易漏步骤、需要
 | 长流程被打断          | 终端关了、AI 命令失败了，只能靠人回忆跑到了哪一步                | `.specify/workflows/runs/<run_id>/state.json` 记录当前 step，可从断点继续           |
 | 企业合规/审计         | 很难证明某需求是否经过 spec review、plan review       | run 目录里有 `inputs.json`、`state.json`、`log.jsonl`，可追踪每一步                   |
 
-
-不适合的场景也很明确：如果需求很小、开发者需要在每一步深度思考和改写提示词，直接手动跑 `/speckit.`* 更灵活；workflow 更适合**成熟流程的自动化入口**，不是探索阶段的替代品。
+不适合的场景也很明确：如果需求很小、开发者需要在每一步深度思考和改写提示词，直接手动跑 `/speckit.*` 更灵活；workflow 更适合**成熟流程的自动化入口**，不是探索阶段的替代品。
 
 #### C.2.2 当前 bundled `speckit` workflow 做了什么？
 
@@ -3115,8 +2959,6 @@ flowchart TD
     S -->|无| T["RunStatus.COMPLETED"]
 ```
 
-
-
 关键源码对象可以这样理解：
 
 - `WorkflowDefinition`：把 YAML 解析成 `id/name/version/inputs/steps`。
@@ -3138,7 +2980,6 @@ specify workflow resume <run_id>
 
 `src/specify_cli/workflows/__init__.py` 会把 10 种内置 step 注册到 `STEP_REGISTRY`：
 
-
 | type       | 作用                                        | 典型配置                                                  |
 | ---------- | ----------------------------------------- | ----------------------------------------------------- |
 | `command`  | 调已安装的 spec-kit 命令；省略 `type` 时默认就是它        | `command: speckit.plan`                               |
@@ -3151,7 +2992,6 @@ specify workflow resume <run_id>
 | `do-while` | 至少执行一次，再按条件决定是否重复                         | `max_iterations: 3`                                   |
 | `fan-out`  | 对数组中的每个 item 执行一个 step 模板；当前实现是顺序展开       | `items: "{{ inputs.modules }}"`                       |
 | `fan-in`   | 汇总 fan-out 结果，供后续步骤使用                     | `wait_for: [parallel-impl]`                           |
-
 
 #### C.2.5 企业落地的推荐改造
 
@@ -3213,8 +3053,8 @@ steps:
 
 1. **依赖 GitHub MCP server**（frontmatter 里声明 `tools: ['github/github-mcp-server/issue_write']`）——spec-kit 自己不直接调 GitHub API，而是让 AI agent 通过 MCP 调，解耦得很干净
 2. **极强的 remote 校验**——命令里有两处 `> [!CAUTION]`：
-  - "ONLY PROCEED TO NEXT STEPS IF THE REMOTE IS A GITHUB URL"（非 GitHub 远程直接中止）
-  - "UNDER NO CIRCUMSTANCES EVER CREATE ISSUES IN REPOSITORIES THAT DO NOT MATCH THE REMOTE URL"（防止误在别的仓库开 issue）
+   - "ONLY PROCEED TO NEXT STEPS IF THE REMOTE IS A GITHUB URL"（非 GitHub 远程直接中止）
+   - "UNDER NO CIRCUMSTANCES EVER CREATE ISSUES IN REPOSITORIES THAT DO NOT MATCH THE REMOTE URL"（防止误在别的仓库开 issue）
 3. **hook 点位**：`before_taskstoissues` / `after_taskstoissues`——和其它 8 个命令一样有 pre/post hook 槽位（`git` extension 默认挂 auto-commit）
 4. **check-prerequisites.sh 参数**：`--json --require-tasks --include-tasks`——强制要求 tasks.md 存在，且把 tasks.md 也列进 `AVAILABLE_DOCS`
 
@@ -3250,8 +3090,6 @@ flowchart LR
     RT -->|push tag v*| R
 ```
 
-
-
 **为什么要"两步发布"（release-trigger → release）**：
 
 - 第一步 `release-trigger.yml` 是**受控的本地化变更**：在仓库里 bump `pyproject.toml`、更 `CHANGELOG.md`、创建 tag、发 PR 给 maintainers review——所有内容都可审计
@@ -3262,11 +3100,10 @@ flowchart LR
 这种清晰的分层让两类贡献者各司其职：
 
 - **spec-kit maintainer**：关心 `.github/workflows/` 稳定、release 流畅
-- **spec-kit 用户 / 插件作者**：关心 `.specify/`、`/speckit.`* 命令和 extension/preset/workflow——根本不需要看仓库 CI
+- **spec-kit 用户 / 插件作者**：关心 `.specify/`、`/speckit.*` 命令和 extension/preset/workflow——根本不需要看仓库 CI
 
 ---
 
 **一句话总结**：
 
-> `specify init` 的本质是“**把本地资产按 agent 约定布线**”；`/speckit.constitution` 的本质是“**让 AI 按 SKILL.md 的工作流生成并维护项目宪法**”；`/speckit.specify` 的本质是“**把自然语言需求翻译成 WHAT-only 的结构化 spec，并为本 feature 开辟独立工作目录**”，它不直接审判宪法，把硬门槛留给 `/speckit.plan`；`/speckit.clarify` 的本质是“**按 11 类 taxonomy 主动扫描已有 spec 并修订，给 `/speckit.plan` 喂干净食材**”，它和 `/speckit.specify` 的 3 问 validation 是"**模板填空 vs 主动挑刺**"的关系；`/speckit.plan` 的本质是“**第一次从 WHAT 进入 HOW，通过 Pre/Phase 0/Phase 1 三段式把技术选型、研究结论、数据模型、契约文件全部定稿，并以两次 Constitution Check 作为硬门槛**”——它是 SDD 里**第一个真正显式加载并审判宪法的命令**；`/speckit.tasks` 的本质是“**把设计产物机械地翻译成带文件路径的原子 checkbox**”，通过**文件路径锚点 + [P] 并行约束 + Artifact 一一映射 + Phase 隔离 + Checkpoint 独立可测 + LLM 可独立执行**六条正交约束把粒度压进"一个文件 × 一个明确产物"的甜区；`/speckit.implement` 则是“**SDD 流水线里唯一真正改动源码的命令**”，本质是"**以 tasks.md 为工作队列的状态机执行器**"——用 Checklists 门禁守住动手前最后一扇门、用 Phase-by-Phase + TDD + `[P]` 并行 + 文件串行四条规则串执行、用 `[ ] → [X]` 回写让 tasks.md 变成可中断续跑的"活状态"、把 ignore 文件维护与自动 commit hook 做成前后的"卫生准备 / 收尾动作"，它不再审宪法、不再做决策，只忠实执行上游审判过的设计；**Extensions 机制**则是“**把核心永远保持精简、把一切面向工具栈的自动化下放到插件层**”的设计——核心命令对 extensions 零感知，仅在固定时机广播 `before_`* / `after_`* 事件，由项目级 `.specify/extensions.yml` 决定谁来接、接了做什么；而 `/speckit.clarify`、`/speckit.analyze`、`/speckit.checklist` 这三个**可选命令**则组成了 SDD 的"质量保险层"——`clarify` 纵深扫 spec 内部的坑（11 类 taxonomy × 最多 5 问）、`analyze` 横扫 spec+plan+tasks 的漂移（3 文档 × 6 类检测 × READ-ONLY 报告）、`checklist` 给 requirements 本身写"单元测试"（"Unit tests for English"，被 implement 的 Checklists 门禁消费），核心 5 条命令保证"能跑通"、这 3 条命令保证"跑得好"；`constitution.md` 不是给 AI 的说明书，而是**被整个 SDD 命令链反复读取的决策门槛**，这正是它和 `AGENTS.md` 这类 agent 指南的根本区别；而 SDD 主干之外还有三条并行的扩展线——**Extensions**（加 hook/加命令）、**Presets**（版本化覆盖模板）、**Workflows**（10 种 step 类型组成的可恢复编排引擎，init 时就自动装了一条 bundled `speckit` workflow）——通过**项目级 `.specify/` 共享基础设施 + 4 级模板解析优先级栈**把 "一次 init，任意切 agent、任意叠插件、任意换模板、任意编排流水线" 变成可能；第九条命令 `/speckit.taskstoissues` 则是把 tasks.md 桥接到 GitHub issues 的 MCP 封装，供团队协作场景使用；最后 `.github/workflows/` 只是**仓库自身**的 CI/CD，和用户项目的 SDD 工作流完全解耦，唯一的接缝是发布出的 wheel 被用户 `pip install` 装到本地。
-
+> `specify init` 的本质是“**把本地资产按 agent 约定布线**”；`/speckit.constitution` 的本质是“**让 AI 按 SKILL.md 的工作流生成并维护项目宪法**”；`/speckit.specify` 的本质是“**把自然语言需求翻译成 WHAT-only 的结构化 spec，并为本 feature 开辟独立工作目录**”，它不直接审判宪法，把硬门槛留给 `/speckit.plan`；`/speckit.clarify` 的本质是“**按 11 类 taxonomy 主动扫描已有 spec 并修订，给 `/speckit.plan` 喂干净食材**”，它和 `/speckit.specify` 的 3 问 validation 是"**模板填空 vs 主动挑刺**"的关系；`/speckit.plan` 的本质是“**第一次从 WHAT 进入 HOW，通过 Pre/Phase 0/Phase 1 三段式把技术选型、研究结论、数据模型、契约文件全部定稿，并以两次 Constitution Check 作为硬门槛**”——它是 SDD 里**第一个真正显式加载并审判宪法的命令**；`/speckit.tasks` 的本质是“**把设计产物机械地翻译成带文件路径的原子 checkbox**”，通过**文件路径锚点 + [P] 并行约束 + Artifact 一一映射 + Phase 隔离 + Checkpoint 独立可测 + LLM 可独立执行**六条正交约束把粒度压进"一个文件 × 一个明确产物"的甜区；`/speckit.implement` 则是“**SDD 流水线里唯一真正改动源码的命令**”，本质是"**以 tasks.md 为工作队列的状态机执行器**"——用 Checklists 门禁守住动手前最后一扇门、用 Phase-by-Phase + TDD + `[P]` 并行 + 文件串行四条规则串执行、用 `[ ] → [X]` 回写让 tasks.md 变成可中断续跑的"活状态"、把 ignore 文件维护与自动 commit hook 做成前后的"卫生准备 / 收尾动作"，它不再审宪法、不再做决策，只忠实执行上游审判过的设计；**Extensions 机制**则是“**把核心永远保持精简、把一切面向工具栈的自动化下放到插件层**”的设计——核心命令对 extensions 零感知，仅在固定时机广播 `before_`*/ `after_`* 事件，由项目级 `.specify/extensions.yml` 决定谁来接、接了做什么；而 `/speckit.clarify`、`/speckit.analyze`、`/speckit.checklist` 这三个**可选命令**则组成了 SDD 的"质量保险层"——`clarify` 纵深扫 spec 内部的坑（11 类 taxonomy × 最多 5 问）、`analyze` 横扫 spec+plan+tasks 的漂移（3 文档 × 6 类检测 × READ-ONLY 报告）、`checklist` 给 requirements 本身写"单元测试"（"Unit tests for English"，被 implement 的 Checklists 门禁消费），核心 5 条命令保证"能跑通"、这 3 条命令保证"跑得好"；`constitution.md` 不是给 AI 的说明书，而是**被整个 SDD 命令链反复读取的决策门槛**，这正是它和 `AGENTS.md` 这类 agent 指南的根本区别；而 SDD 主干之外还有三条并行的扩展线——**Extensions**（加 hook/加命令）、**Presets**（版本化覆盖模板）、**Workflows**（10 种 step 类型组成的可恢复编排引擎，init 时就自动装了一条 bundled `speckit` workflow）——通过**项目级 `.specify/` 共享基础设施 + 4 级模板解析优先级栈**把 "一次 init，任意切 agent、任意叠插件、任意换模板、任意编排流水线" 变成可能；第九条命令 `/speckit.taskstoissues` 则是把 tasks.md 桥接到 GitHub issues 的 MCP 封装，供团队协作场景使用；最后 `.github/workflows/` 只是**仓库自身**的 CI/CD，和用户项目的 SDD 工作流完全解耦，唯一的接缝是发布出的 wheel 被用户 `pip install` 装到本地。
