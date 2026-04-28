@@ -6,91 +6,106 @@
 
 ## 目录
 
-- [一、`specify init . --ai cursor-agent` 的作用与原理](#一specify-init----ai-cursor-agent-的作用与原理)
-  - [1.1 命令做了什么（一句话）](#11-命令做了什么一句话)
-  - [1.2 顶层执行流程](#12-顶层执行流程)
-  - [1.3 Integration 注册表与统一框架](#13-integration-注册表与统一框架)
-  - [1.4 安装产物：`.cursor/` 与 `.specify/](#14-安装产物cursor-与-specify)`
-  - [1.5 上下文规则文件 `.cursor/rules/specify-rules.mdc` 的作用](#15-上下文规则文件-cursorrulesspecify-rulesmdc-的作用)
-  - [1.6 命令模板到 SKILL.md 的转换](#16-命令模板到-skillmd-的转换)
-  - [1.7 Manifest：可安全卸载与升级的基础](#17-manifest可安全卸载与升级的基础)
-- [二、`/speckit.constitution` 的作用与原理](#二speckitconstitution-的作用与原理)
-  - [2.1 命令本质：一段给 AI 执行的工作流](#21-命令本质一段给-ai-执行的工作流)
-  - [2.2 三层解耦的文件关系](#22-三层解耦的文件关系)
-  - [2.3 AI Agent 的 8 步执行流程](#23-ai-agent-的-8-步执行流程)
-  - [2.4 Pre/Post 扩展 Hook 机制](#24-prepost-扩展-hook-机制)
-- [三、`/speckit.specify` 的作用与原理](#三speckitspecify-的作用与原理)
-  - [3.1 它在 SDD 流水线里的定位](#31-它在-sdd-流水线里的定位)
-  - [3.2 澄清：它并不直接读 `constitution.md](#32-澄清它并不直接读-constitutionmd)`
-  - [3.3 为什么要建 `specs/NNN-xxx/` 目录](#33-为什么要建-specsnnn-xxx-目录)
-  - [3.4 编号是怎么选出来的](#34-编号是怎么选出来的)
-  - [3.5 `feature.json`：下游命令定位 feature 的唯一权威](#35-featurejson下游命令定位-feature-的唯一权威)
-  - [3.6 AI Agent 的 9 步执行流程](#36-ai-agent-的-9-步执行流程)
-  - [3.7 不同 agent 下的 frontmatter 与 handoff 差异](#37-不同-agent-下的-frontmatter-与-handoff-差异)
-- [四、`/speckit.clarify` 的作用与原理](#四speckitclarify-的作用与原理)
-  - [4.1 它在 SDD 流水线里的位置](#41-它在-sdd-流水线里的位置)
-  - [4.2 和 `/speckit.specify` 的 "3 问 validation" 的区别](#42-和-speckitspecify-的-3-问-validation-的区别)
-  - [4.3 核心原理：11 类 taxonomy 扫描](#43-核心原理11-类-taxonomy-扫描)
-  - [4.4 AI Agent 的 9 步执行流程](#44-ai-agent-的-9-步执行流程)
-  - [4.5 提问 UI 的三个硬约束](#45-提问-ui-的三个硬约束)
-  - [4.6 整合到 spec 的规则](#46-整合到-spec-的规则)
-  - [4.7 和 `constitution.md` 的关系与使用边界](#47-和-constitutionmd-的关系与使用边界)
-- [五、`/speckit.plan` 的作用与原理](#五speckitplan-的作用与原理)
-  - [5.1 它在 SDD 流水线里的定位](#51-它在-sdd-流水线里的定位)
-  - [5.2 `setup-plan.sh`：先把骨架摆好](#52-setup-plansh先把骨架摆好)
-  - [5.3 整体 3 阶段结构（Pre → Phase 0 → Phase 1）](#53-整体-3-阶段结构pre--phase-0--phase-1)
-  - [5.4 Phase 0：Outline & Research](#54-phase-0outline--research)
-  - [5.5 Phase 1：Design & Contracts](#55-phase-1design--contracts)
-  - [5.6 Constitution Check：宪法真正"开审"的地方](#56-constitution-check宪法真正开审的地方)
-  - [5.7 完整执行时序](#57-完整执行时序)
-  - [5.8 产出清单与 plan.md 内部结构](#58-产出清单与-planmd-内部结构)
-  - [5.9 与前后命令的串联关系](#59-与前后命令的串联关系)
-  - [5.10 为什么停在 Phase 1，不顺手把 tasks 生成了](#510-为什么停在-phase-1不顺手把-tasks-生成了)
-- [六、`/speckit.tasks` 的作用与原理](#六speckittasks-的作用与原理)
-  - [6.1 它在 SDD 流水线里的定位](#61-它在-sdd-流水线里的定位)
-  - [6.2 输入 / 输出与执行骨架](#62-输入--输出与执行骨架)
-  - [6.3 核心：任务组织的"三维切分"](#63-核心任务组织的三维切分)
-  - [6.4 粒度怎么把握：六条约束压出的"甜区"](#64-粒度怎么把握六条约束压出的甜区)
-  - [6.5 完整执行时序](#65-完整执行时序)
-  - [6.6 一句话总结粒度控制策略](#66-一句话总结粒度控制策略)
-- [七、Extensions 机制：可装拆的插件系统](#七extensions-机制可装拆的插件系统)
-  - [7.1 为什么需要 extensions](#71-为什么需要-extensions)
-  - [7.2 不装 vs 装（以 `git` extension 为例）](#72-不装-vs-装以-git-extension-为例)
-  - [7.3 一个 extension 的物理组成](#73-一个-extension-的物理组成)
-  - [7.4 三板斧：发现 / 安装 / 管理](#74-三板斧发现--安装--管理)
-  - [7.5 Hook 机制：核心命令是怎么被"注入"的](#75-hook-机制核心命令是怎么被注入的)
-  - [7.6 Hook 的 condition 表达式](#76-hook-的-condition-表达式)
-  - [7.7 原理全景：从 catalog 到命令执行](#77-原理全景从-catalog-到命令执行)
-- [八、`/speckit.implement` 的作用与原理](#八speckitimplement-的作用与原理)
-  - [8.1 它在 SDD 流水线里的定位](#81-它在-sdd-流水线里的定位)
-  - [8.2 命令签名与前置脚本](#82-命令签名与前置脚本)
-  - [8.3 九步执行骨架](#83-九步执行骨架)
-  - [8.4 Checklists 门禁：动手前最后一扇门](#84-checklists-门禁动手前最后一扇门)
-  - [8.5 Project Setup Verification：ignore 文件自动维护](#85-project-setup-verificationignore-文件自动维护)
-  - [8.6 Phase-by-Phase 执行语义](#86-phase-by-phase-执行语义)
-  - [8.7 状态回写：tasks.md 的"活心脏"](#87-状态回写tasksmd-的活心脏)
-  - [8.8 错误处理策略](#88-错误处理策略)
-  - [8.9 Completion validation 与 Extensions 在 implement 阶段的位置](#89-completion-validation-与-extensions-在-implement-阶段的位置)
-  - [8.10 为什么它没有 Constitution Check](#810-为什么它没有-constitution-check)
-- [九、可选命令使用指南：`/speckit.clarify` / `/speckit.analyze` / `/speckit.checklist](#九可选命令使用指南speckitclarify--speckitanalyze--speckitchecklist)`
-  - [9.1 为什么这三个命令是“可选”的](#91-为什么这三个命令是可选的)
-  - [9.2 三个命令各自回答什么问题](#92-三个命令各自回答什么问题)
-  - [9.3 什么情况下应该使用](#93-什么情况下应该使用)
-  - [9.4 如何融入 workflow](#94-如何融入-workflow)
-  - [9.5 用前 vs 用后对比：三个真实案例](#95-用前-vs-用后对比三个真实案例)
-  - [9.6 三命令的关系与典型反模式](#96-三命令的关系与典型反模式)
-  - [9.7 一句话总结](#97-一句话总结)
-- [十、`constitution.md` 的作用，以及与 `AGENTS.md` 的区别](#十constitutionmd-的作用以及与-agentsmd-的区别)
-  - [10.1 它是项目的“宪法”而非“说明书”](#101-它是项目的宪法而非说明书)
-  - [10.2 它具体承担什么](#102-它具体承担什么)
-  - [10.3 与 `AGENTS.md` / `CLAUDE.md` / `.cursor/rules/`* 的区别](#103-与-agentsmd--claudemd--cursorrules-的区别)
-  - [10.4 为什么不能用 `AGENTS.md` 替代](#104-为什么不能用-agentsmd-替代)
-- [十一、一张图串起各环节关系](#十一一张图串起各环节关系)
-- [附录 A：`specify` CLI 全貌](#附录-aspecify-cli-全貌)
-- [附录 B：`.specify/` 目录全景与模板解析优先级栈](#附录-bspecify-目录全景与模板解析优先级栈)
-- [附录 C：Presets 与 Workflows（Extensions 之外的两条扩展线）](#附录-cpresets-与-workflowsextensions-之外的两条扩展线)
-- [附录 D：`/speckit.taskstoissues`——把 tasks 翻译成 GitHub issues](#附录-dspeckittaskstoissues把-tasks-翻译成-github-issues)
-- [附录 E：`.github/workflows/`——spec-kit 仓库自己的 CI/CD](#附录-egithubworkflowsspec-kit-仓库自己的-cicd)
+- [spec-kit 实现原理笔记（中文）](#spec-kit-实现原理笔记中文)
+  - [目录](#目录)
+  - [一、`specify init . --ai cursor-agent` 的作用与原理](#一specify-init----ai-cursor-agent-的作用与原理)
+    - [1.1 命令做了什么（一句话）](#11-命令做了什么一句话)
+    - [1.2 顶层执行流程](#12-顶层执行流程)
+    - [1.3 Integration 注册表与统一框架](#13-integration-注册表与统一框架)
+    - [1.4 安装产物：`.cursor/` 与 `.specify/`](#14-安装产物cursor-与-specify)
+    - [1.5 上下文规则文件 `.cursor/rules/specify-rules.mdc` 的作用](#15-上下文规则文件-cursorrulesspecify-rulesmdc-的作用)
+    - [1.6 命令模板到 SKILL.md 的转换](#16-命令模板到-skillmd-的转换)
+    - [1.7 Manifest：可安全卸载与升级的基础](#17-manifest可安全卸载与升级的基础)
+  - [二、`/speckit.constitution` 的作用与原理](#二speckitconstitution-的作用与原理)
+    - [2.1 命令本质：一段给 AI 执行的工作流](#21-命令本质一段给-ai-执行的工作流)
+    - [2.2 三层解耦的文件关系](#22-三层解耦的文件关系)
+    - [2.3 AI Agent 的 8 步执行流程](#23-ai-agent-的-8-步执行流程)
+    - [2.4 Pre/Post 扩展 Hook 机制](#24-prepost-扩展-hook-机制)
+  - [三、`/speckit.specify` 的作用与原理](#三speckitspecify-的作用与原理)
+    - [3.1 它在 SDD 流水线里的定位](#31-它在-sdd-流水线里的定位)
+    - [3.2 澄清：它并不直接读 `constitution.md`](#32-澄清它并不直接读-constitutionmd)
+    - [3.3 为什么要建 `specs/NNN-xxx/` 目录](#33-为什么要建-specsnnn-xxx-目录)
+    - [3.4 编号是怎么选出来的](#34-编号是怎么选出来的)
+    - [3.5 `feature.json`：下游命令定位 feature 的唯一权威](#35-featurejson下游命令定位-feature-的唯一权威)
+    - [3.6 AI Agent 的 9 步执行流程](#36-ai-agent-的-9-步执行流程)
+    - [3.7 不同 agent 下的 frontmatter 与 handoff 差异](#37-不同-agent-下的-frontmatter-与-handoff-差异)
+  - [四、`/speckit.clarify` 的作用与原理](#四speckitclarify-的作用与原理)
+    - [4.1 它在 SDD 流水线里的位置](#41-它在-sdd-流水线里的位置)
+    - [4.2 和 `/speckit.specify` 的 "3 问 validation" 的区别](#42-和-speckitspecify-的-3-问-validation-的区别)
+    - [4.3 核心原理：11 类 taxonomy 扫描](#43-核心原理11-类-taxonomy-扫描)
+    - [4.4 AI Agent 的 9 步执行流程](#44-ai-agent-的-9-步执行流程)
+    - [4.5 提问 UI 的三个硬约束](#45-提问-ui-的三个硬约束)
+    - [4.6 整合到 spec 的规则](#46-整合到-spec-的规则)
+    - [4.7 和 `constitution.md` 的关系与使用边界](#47-和-constitutionmd-的关系与使用边界)
+  - [五、`/speckit.plan` 的作用与原理](#五speckitplan-的作用与原理)
+    - [5.1 它在 SDD 流水线里的定位](#51-它在-sdd-流水线里的定位)
+    - [5.2 `setup-plan.sh`：先把骨架摆好](#52-setup-plansh先把骨架摆好)
+    - [5.3 整体 3 阶段结构（Pre → Phase 0 → Phase 1）](#53-整体-3-阶段结构pre--phase-0--phase-1)
+    - [5.4 Phase 0：Outline \& Research](#54-phase-0outline--research)
+    - [5.5 Phase 1：Design \& Contracts](#55-phase-1design--contracts)
+    - [5.6 Constitution Check：宪法真正"开审"的地方](#56-constitution-check宪法真正开审的地方)
+    - [5.7 完整执行时序](#57-完整执行时序)
+    - [5.8 产出清单与 plan.md 内部结构](#58-产出清单与-planmd-内部结构)
+    - [5.9 与前后命令的串联关系](#59-与前后命令的串联关系)
+    - [5.10 为什么停在 Phase 1，不顺手把 tasks 生成了](#510-为什么停在-phase-1不顺手把-tasks-生成了)
+  - [六、`/speckit.tasks` 的作用与原理](#六speckittasks-的作用与原理)
+    - [6.1 它在 SDD 流水线里的定位](#61-它在-sdd-流水线里的定位)
+    - [6.2 输入 / 输出与执行骨架](#62-输入--输出与执行骨架)
+    - [6.3 核心：任务组织的"三维切分"](#63-核心任务组织的三维切分)
+    - [6.4 粒度怎么把握：六条约束压出的"甜区"](#64-粒度怎么把握六条约束压出的甜区)
+    - [6.5 完整执行时序](#65-完整执行时序)
+    - [6.6 一句话总结粒度控制策略](#66-一句话总结粒度控制策略)
+  - [七、Extensions 机制：可装拆的插件系统](#七extensions-机制可装拆的插件系统)
+    - [7.1 为什么需要 extensions](#71-为什么需要-extensions)
+    - [7.2 不装 vs 装（以 `git` extension 为例）](#72-不装-vs-装以-git-extension-为例)
+    - [7.3 一个 extension 的物理组成](#73-一个-extension-的物理组成)
+    - [7.4 三板斧：发现 / 安装 / 管理](#74-三板斧发现--安装--管理)
+    - [7.5 Hook 机制：核心命令是怎么被"注入"的](#75-hook-机制核心命令是怎么被注入的)
+    - [7.6 Hook 的 condition 表达式](#76-hook-的-condition-表达式)
+    - [7.7 原理全景：从 catalog 到命令执行](#77-原理全景从-catalog-到命令执行)
+  - [八、`/speckit.implement` 的作用与原理](#八speckitimplement-的作用与原理)
+    - [8.1 它在 SDD 流水线里的定位](#81-它在-sdd-流水线里的定位)
+    - [8.2 命令签名与前置脚本](#82-命令签名与前置脚本)
+    - [8.3 九步执行骨架](#83-九步执行骨架)
+    - [8.4 Checklists 门禁：动手前最后一扇门](#84-checklists-门禁动手前最后一扇门)
+    - [8.5 Project Setup Verification：ignore 文件自动维护](#85-project-setup-verificationignore-文件自动维护)
+    - [8.6 Phase-by-Phase 执行语义](#86-phase-by-phase-执行语义)
+    - [8.7 状态回写：tasks.md 的"活心脏"](#87-状态回写tasksmd-的活心脏)
+    - [8.8 错误处理策略](#88-错误处理策略)
+    - [8.9 Completion validation 与 Extensions 在 implement 阶段的位置](#89-completion-validation-与-extensions-在-implement-阶段的位置)
+    - [8.10 为什么它没有 Constitution Check](#810-为什么它没有-constitution-check)
+  - [九、可选命令使用指南：`/speckit.clarify` / `/speckit.analyze` / `/speckit.checklist`](#九可选命令使用指南speckitclarify--speckitanalyze--speckitchecklist)
+    - [9.1 为什么这三个命令是“可选”的](#91-为什么这三个命令是可选的)
+    - [9.2 三个命令各自回答什么问题](#92-三个命令各自回答什么问题)
+    - [9.3 什么情况下应该使用](#93-什么情况下应该使用)
+    - [9.4 如何融入 workflow](#94-如何融入-workflow)
+    - [9.5 用前 vs 用后对比：三个真实案例](#95-用前-vs-用后对比三个真实案例)
+      - [案例 1：电商支付 feature（有 clarify / 无 clarify）](#案例-1电商支付-feature有-clarify--无-clarify)
+      - [案例 2：UI 组件库 feature（有 checklist / 无 checklist）](#案例-2ui-组件库-feature有-checklist--无-checklist)
+      - [案例 3：spec 中途修改后的 analyze（有 analyze / 无 analyze）](#案例-3spec-中途修改后的-analyze有-analyze--无-analyze)
+    - [9.6 三命令的关系与典型反模式](#96-三命令的关系与典型反模式)
+    - [9.7 一句话总结](#97-一句话总结)
+  - [十、`constitution.md` 的作用，以及与 `AGENTS.md` 的区别](#十constitutionmd-的作用以及与-agentsmd-的区别)
+    - [10.1 它是项目的“宪法”而非“说明书”](#101-它是项目的宪法而非说明书)
+    - [10.2 它具体承担什么](#102-它具体承担什么)
+    - [10.3 与 `AGENTS.md` / `CLAUDE.md` / `.cursor/rules/`\* 的区别](#103-与-agentsmd--claudemd--cursorrules-的区别)
+    - [10.4 为什么不能用 `AGENTS.md` 替代](#104-为什么不能用-agentsmd-替代)
+  - [十一、一张图串起各环节关系](#十一一张图串起各环节关系)
+  - [附录 A：`specify` CLI 全貌](#附录-aspecify-cli-全貌)
+  - [附录 B：`.specify/` 目录全景与模板解析优先级栈](#附录-bspecify-目录全景与模板解析优先级栈)
+    - [B.1 完整目录布局](#b1-完整目录布局)
+    - [B.2 模板解析优先级栈（关键机制）](#b2-模板解析优先级栈关键机制)
+    - [B.3 非 git 场景降级](#b3-非-git-场景降级)
+  - [附录 C：Presets 与 Workflows（Extensions 之外的两条扩展线）](#附录-cpresets-与-workflowsextensions-之外的两条扩展线)
+    - [C.1 Presets：版本化的模板覆盖包](#c1-presets版本化的模板覆盖包)
+    - [C.2 Workflows：可恢复的多步编排](#c2-workflows可恢复的多步编排)
+      - [C.2.1 适合什么场景？](#c21-适合什么场景)
+      - [C.2.2 当前 bundled `speckit` workflow 做了什么？](#c22-当前-bundled-speckit-workflow-做了什么)
+      - [C.2.3 它是如何执行的？](#c23-它是如何执行的)
+      - [C.2.4 10 种 step 类型该怎么理解？](#c24-10-种-step-类型该怎么理解)
+      - [C.2.5 企业落地的推荐改造](#c25-企业落地的推荐改造)
+  - [附录 D：`/speckit.taskstoissues`——把 tasks 翻译成 GitHub issues](#附录-dspeckittaskstoissues把-tasks-翻译成-github-issues)
+  - [附录 E：`.github/workflows/`——spec-kit 仓库自己的 CI/CD](#附录-egithubworkflowsspec-kit-仓库自己的-cicd)
 
 ---
 
@@ -143,20 +158,20 @@ flowchart TD
 **关于 CLI flags 的完整清单**（2026-04 版本）：
 
 
-| Flag                                      | 用途                 | 说明                            |
-| ----------------------------------------- | ------------------ | ----------------------------- |
-| `--ai <key>`                              | 选 AI agent         | 28 个内置 key 之一（见 §1.3）         |
-| `--integration <key>`                     | 新式写法               | 与 `--ai` 互斥，语义完全等价            |
-| `--script sh|ps`                          | 选脚本类型              | 不指定则按平台（Windows → ps）         |
-| `--here` / `.`                            | 在当前目录初始化           | 二者等价                          |
-| `--force`                                 | 跳过"目录非空"确认         | 与 `--here` 或已存在目录配合           |
-| `--no-git`                                | 不初始化 git           | 连带跳过 git extension 自动安装       |
-| `--ignore-agent-tools`                    | 跳过 agent CLI 存在性检查 | 某些 agent 需要本地 CLI             |
-| `--preset <id>`                           | 初始化时同时装一个 preset   | 见第十二章                         |
-| `--branch-numbering sequential|timestamp` | feature 分支命名策略     | 写到 `git` extension 配置（见 §3.4） |
-| `--ai-commands-dir <dir>`                 | 自定义命令目录            | 仅 `--ai generic` 需要           |
-| `--ai-skills`                             | 强制以 skills 方式安装    | 对 `SkillsIntegration` 已是默认    |
-| `--integration-options "..."`             | 透传给 integration    | 每种 integration 自己声明接受哪些       |
+| Flag                           | 用途                 | 说明                         |
+| ------------------------------ | ------------------ | -------------------------- |
+| `--ai <key>`                   | 选 AI agent         | 28 个内置 key 之一（见 §1.3）      |
+| `--integration <key>`          | 新式写法               | 与 `--ai` 互斥，语义完全等价         |
+| `--script sh                   | ps`                | 选脚本类型                      |
+| `--here` / `.`                 | 在当前目录初始化           | 二者等价                       |
+| `--force`                      | 跳过"目录非空"确认         | 与 `--here` 或已存在目录配合        |
+| `--no-git`                     | 不初始化 git           | 连带跳过 git extension 自动安装    |
+| `--ignore-agent-tools`         | 跳过 agent CLI 存在性检查 | 某些 agent 需要本地 CLI          |
+| `--preset <id>`                | 初始化时同时装一个 preset   | 见第十二章                      |
+| `--branch-numbering sequential | timestamp`         | feature 分支命名策略             |
+| `--ai-commands-dir <dir>`      | 自定义命令目录            | 仅 `--ai generic` 需要        |
+| `--ai-skills`                  | 强制以 skills 方式安装    | 对 `SkillsIntegration` 已是默认 |
+| `--integration-options "..."`  | 透传给 integration    | 每种 integration 自己声明接受哪些    |
 
 
 几个已 deprecated 的 flag（`--skip-tls` / `--debug` / `--github-token` / `--offline`）在源码里被标 `hidden=True`，新版本都已是 no-op——这是因为 **v0.x 中期开始资产改为"bundled"**（打在 wheel 里随 CLI 一起装），不再从 GitHub 下载，也就用不到网络配置选项。
@@ -2925,7 +2940,7 @@ flowchart TD
 
 | 机制            | 改什么                              | 何时生效                        | 典型用法                                                   |
 | ------------- | -------------------------------- | --------------------------- | ------------------------------------------------------ |
-| **Extension** | 加新命令 + 在核心命令前后插 hook             | 运行时（`before_`* / `after_*`） | `git` 自动建分支/commit、`jira` 同步 issue                     |
+| **Extension** | 加新命令 + 在核心命令前后插 hook             | 运行时（`before_`* / `after_`*） | `git` 自动建分支/commit、`jira` 同步 issue                     |
 | **Preset**    | 替换 / 覆盖**模板**（spec/plan/tasks 等） | 模板解析时（见附录 B.2）              | 医疗合规 preset 换掉 spec-template、强制 HIPAA 章节               |
 | **Workflow**  | 编排一连串命令（含 AI 调用）成一条可恢复的流水线       | `specify workflow run`      | 一键跑完 constitution→specify→clarify→plan→tasks→implement |
 
@@ -2968,66 +2983,229 @@ templates:
 
 ### C.2 Workflows：可恢复的多步编排
 
-`src/specify_cli/workflows/` 是一个**完整的工作流引擎**，内置 **10 种 step 类型**：
+`src/specify_cli/workflows/` 不是另一套 `/speckit.*` 命令，而是一个**把多条命令、脚本、条件分支和人工门禁串起来的编排引擎**。它解决的问题不是"让 AI 不经 review 一口气写完所有东西"，而是：
+
+- **把标准顺序固定下来**：新人不用记 `/speckit.specify → /speckit.plan → /speckit.tasks → /speckit.implement` 的顺序、参数和中间检查点。
+- **把 review 点写进流程本身**：例如 spec 生成后暂停、plan 生成后暂停，人工确认后再继续。
+- **让流程可恢复、可审计**：每一步结果都会写入 `.specify/workflows/runs/<run_id>/`，中断后可以 `resume`，也能回看当时输入和步骤状态。
+- **让团队定制一条"公司标准 SDD 流水线"**：例如在 `plan` 后插入架构 gate，在 `tasks` 后跑 lint/test，在 `implement` 前要求 checklist 全部通过。
+
+所以，文档里说的"一次性入口"不应该理解成"一次性把所有文件盲目生成完"。更准确地说，它是**一次启动一个受控流程**：流程自动跑到下一个 gate，然后停下来等人 review；review 通过后再 `specify workflow resume <run_id>` 继续。对于 CI 场景，因为 `gate` 在非交互式终端里会返回 `PAUSED`，它天然适合做成"自动生成到可审核节点，然后等待人工继续"的流程。
+
+#### C.2.1 适合什么场景？
+
+Workflow 最适合那些**步骤固定、参与人多、容易漏步骤、需要留下运行记录**的场景：
 
 
-| type         | 作用                         | 典型配置                            |
-| ------------ | -------------------------- | ------------------------------- |
-| `command`    | 调 AI agent 执行一个 speckit 命令 | `command: /speckit.plan`        |
-| `shell`      | 跑一条 shell 命令               | `command: "npm test"`           |
-| `prompt`     | 问用户 1 个问题，存到 `inputs.`*    | `name: branch, default: ...`    |
-| `if_then`    | 条件分支                       | `if: "{{ steps.x.output.ok }}"` |
-| `switch`     | 多分支                        | `cases: [...]`                  |
-| `while_loop` | 前测循环                       | `while: "{{ ... }}"`            |
-| `do_while`   | 后测循环                       | `do: [...], while: "..."`       |
-| `fan_out`    | 把一个数组拆成多个并行子流程             | `over: "{{ items }}"`           |
-| `fan_in`     | 汇聚 fan-out 的结果             | `from: <fan-out-id>`            |
-| `gate`       | 人工门禁（暂停等确认）                | `approvers: [...]`              |
+| 场景              | 不用 workflow 时                             | 用 workflow 后                                                             |
+| --------------- | ----------------------------------------- | ------------------------------------------------------------------------ |
+| 新员工按 SDD 做第一个需求 | 需要人工记住每一步命令和参数，容易漏掉 plan/tasks 前的 review  | 只运行 `specify workflow run speckit --input spec="..."`，流程自动停在 review gate |
+| 公司内部标准化落地       | 每个团队自己决定什么时候 clarify、什么时候 checklist、什么时候测 | 把公司规则固化到 workflow：该 gate 的地方 gate，该跑脚本的地方跑脚本                             |
+| CI/平台触发规格生成     | CI 很难交互式调用一串 AI 命令，也不知道中间文件是否需要审核         | CI 跑到 `gate` 后状态变成 `PAUSED`，平台记录 `run_id`，人工审核后恢复                        |
+| 长流程被打断          | 终端关了、AI 命令失败了，只能靠人回忆跑到了哪一步                | `.specify/workflows/runs/<run_id>/state.json` 记录当前 step，可从断点继续           |
+| 企业合规/审计         | 很难证明某需求是否经过 spec review、plan review       | run 目录里有 `inputs.json`、`state.json`、`log.jsonl`，可追踪每一步                   |
 
 
-状态机支持 **PENDING / RUNNING / COMPLETED / FAILED / SKIPPED / PAUSED**，每一步的输入输出都会持久化到磁盘。也就是说 `specify workflow resume <run_id>` 可以从**昨天挂掉的那一步**继续跑，不用从头。
+不适合的场景也很明确：如果需求很小、开发者需要在每一步深度思考和改写提示词，直接手动跑 `/speckit.`* 更灵活；workflow 更适合**成熟流程的自动化入口**，不是探索阶段的替代品。
 
-**bundled `speckit` workflow**（init 时自动装）就是把 SDD 主干串起来的示例：
+#### C.2.2 当前 bundled `speckit` workflow 做了什么？
+
+`specify init` 会把仓库内置的 `workflows/speckit/workflow.yml` 安装到项目的 `.specify/workflows/speckit/workflow.yml`。当前真实配置的核心结构如下：
 
 ```yaml
-# .specify/workflows/speckit/workflow.yml（简化版）
-id: speckit
+schema_version: "1.0"
+workflow:
+  id: "speckit"
+  name: "Full SDD Cycle"
+  description: "Runs specify → plan → tasks → implement with review gates"
+
+inputs:
+  spec:
+    type: string
+    required: true
+    prompt: "Describe what you want to build"
+  integration:
+    type: string
+    default: "copilot"
+  scope:
+    type: string
+    default: "full"
+    enum: ["full", "backend-only", "frontend-only"]
+
 steps:
-  - id: init-constitution
-    type: command
-    command: /speckit.constitution
-  - id: draft-spec
-    type: command
-    command: /speckit.specify
-    inputs:
-      prompt: "{{ inputs.feature_description }}"
-  - id: clarify?
-    type: if_then
-    if: "{{ inputs.enable_clarify }}"
-    then:
-      - type: command
-        command: /speckit.clarify
-  - id: plan
-    type: command
-    command: /speckit.plan
-  - id: tasks
-    type: command
-    command: /speckit.tasks
-  - id: gate-review
+  - id: specify
+    command: speckit.specify
+    integration: "{{ inputs.integration }}"
+    input:
+      args: "{{ inputs.spec }}"
+
+  - id: review-spec
     type: gate
-    prompt: "Proceed to implementation?"
+    message: "Review the generated spec before planning."
+    options: [approve, reject]
+    on_reject: abort
+
+  - id: plan
+    command: speckit.plan
+    integration: "{{ inputs.integration }}"
+    input:
+      args: "{{ inputs.spec }}"
+
+  - id: review-plan
+    type: gate
+    message: "Review the plan before generating tasks."
+    options: [approve, reject]
+    on_reject: abort
+
+  - id: tasks
+    command: speckit.tasks
+    integration: "{{ inputs.integration }}"
+    input:
+      args: "{{ inputs.spec }}"
+
   - id: implement
-    type: command
-    command: /speckit.implement
+    command: speckit.implement
+    integration: "{{ inputs.integration }}"
+    input:
+      args: "{{ inputs.spec }}"
 ```
 
-→ 对团队/CI 场景非常有用：你可以把这条 workflow 作为**一次性入口**丢给新员工或 CI 管线，替代"一条条手输 `/speckit.`*"。
+这里有几个容易误解的点：
+
+1. `command: speckit.specify` 不是让 workflow 引擎自己实现 specify，而是让它通过当前 integration 的 CLI 去调用已安装的 spec-kit 命令。真正发给 agent 的可能是 `/speckit.specify ...`、`/speckit-specify ...`，或者某个 agent 特有的调用形式。
+2. `gate` 是人工 review 点。交互式终端里它会让你选 `approve` 或 `reject`；非交互环境里它不会硬闯过去，而是把 workflow 标记为 `PAUSED`。
+3. 当前 bundled 版本只是一个基础示例：它串了 `specify → plan → tasks → implement`，并在 spec、plan 后设置 gate；它**没有**自动跑 `/speckit.constitution`、`/speckit.clarify`、`/speckit.analyze`、`/speckit.checklist`，也没有在 `tasks` 和 `implement` 之间加 gate。企业落地时通常应该复制一份，再按公司流程补这些节点。
+4. `requires.integrations.any` 里声明的是 `copilot`、`claude`、`gemini`。源码里 `requires` 当前主要是声明信息，尚未在运行时强制校验；真正能不能执行取决于该 integration 是否支持 CLI dispatch，以及本机是否能找到对应 CLI。
+5. 对 Cursor 要特别注意：`cursor-agent` 当前是 IDE/skills 集成，`requires_cli` 为 `false`，workflow 的 `command` step 不能像 Claude/Gemini/Copilot CLI 那样直接调起 Cursor IDE 执行技能。所以在 Cursor 场景下，这个 workflow 更适合作为**流程模板和企业改造蓝图**；如果要真正自动跑，需要选择支持 CLI dispatch 的 integration，或后续为 Cursor 增加对应的非交互执行能力。
+
+#### C.2.3 它是如何执行的？
+
+一次运行大致是这样：
+
+```bash
+specify workflow run speckit \
+  --input spec="给后台系统增加订单导出功能" \
+  --input integration=claude
+```
+
+对应源码链路：
+
+```mermaid
+flowchart TD
+    A["specify workflow run speckit"] --> B["WorkflowEngine.load_workflow('speckit')"]
+    B --> C["读取 .specify/workflows/speckit/workflow.yml"]
+    C --> D["WorkflowDefinition.from_yaml() 解析 YAML"]
+    D --> E["validate_workflow() 校验 workflow.id / inputs / steps"]
+    E --> F["_resolve_inputs() 合并 --input 与 default"]
+    F --> G["创建 RunState，生成 run_id"]
+    G --> H["持久化 workflow.yml / inputs.json / state.json"]
+    H --> I["_execute_steps() 顺序执行 steps"]
+    I --> J{"step type"}
+    J -->|默认 command| K["CommandStep.execute()"]
+    J -->|gate| L["GateStep.execute()"]
+    K --> M["integration.dispatch_command() 调 agent CLI"]
+    L --> N{"交互终端？"}
+    N -->|是| O["等待 approve / reject"]
+    N -->|否| P["返回 PAUSED"]
+    M --> Q["记录 step_results + log.jsonl"]
+    O --> Q
+    P --> R["保存 current_step_index，提示 resume"]
+    Q --> S{"还有下一步？"}
+    S -->|有| I
+    S -->|无| T["RunStatus.COMPLETED"]
+```
+
+
+
+关键源码对象可以这样理解：
+
+- `WorkflowDefinition`：把 YAML 解析成 `id/name/version/inputs/steps`。
+- `RunState`：管理一次运行的状态，落盘到 `.specify/workflows/runs/<run_id>/`。
+- `StepContext`：执行时的上下文，包含 `inputs`、前面步骤的 `steps.<id>.output`、默认 integration/model/options。
+- `STEP_REGISTRY`：把 YAML 里的 `type` 映射到具体实现类。省略 `type` 时默认是 `command`。
+- `CommandStep`：解析 `{{ inputs.spec }}` 这类表达式，然后调用 integration 的 `dispatch_command()`。
+- `GateStep`：人工门禁。交互式环境里询问选择；CI/管线里因为没有 TTY，直接暂停等待后续 `resume`。
+
+`resume` 的原理也很直接：`WorkflowEngine.execute()` 每一步前后都会保存 `state.json`；暂停时 `current_step_index` 指向当前 gate。运行：
+
+```bash
+specify workflow resume <run_id>
+```
+
+引擎会读取 `.specify/workflows/runs/<run_id>/state.json` 和当时复制进去的 `workflow.yml`，恢复 `inputs` 与已经完成的 `step_results`，然后从 `current_step_index` 对应的 step 重新执行。这样即使原始 workflow 文件被移动或修改，已启动的那次 run 仍可按当时的定义继续。
+
+#### C.2.4 10 种 step 类型该怎么理解？
+
+`src/specify_cli/workflows/__init__.py` 会把 10 种内置 step 注册到 `STEP_REGISTRY`：
+
+
+| type       | 作用                                        | 典型配置                                                  |
+| ---------- | ----------------------------------------- | ----------------------------------------------------- |
+| `command`  | 调已安装的 spec-kit 命令；省略 `type` 时默认就是它        | `command: speckit.plan`                               |
+| `prompt`   | 直接把一段内联 prompt 发给 integration CLI，不依赖命令文件 | `prompt: "Review {{ inputs.file }}"`                  |
+| `shell`    | 执行本地 shell 命令，捕获 exit code/stdout/stderr  | `run: "npm test"`                                     |
+| `gate`     | 人工 review/approval 门禁；CI 中会暂停             | `options: [approve, reject]`                          |
+| `if`       | 条件分支，满足时返回 `then` steps，否则走 `else`        | `condition: "{{ inputs.scope == 'full' }}"`           |
+| `switch`   | 按表达式值选择多个分支之一                             | `expression: "{{ steps.review.output.choice }}"`      |
+| `while`    | 条件为真时重复执行内部 steps                         | `condition: "{{ steps.test.output.exit_code != 0 }}"` |
+| `do-while` | 至少执行一次，再按条件决定是否重复                         | `max_iterations: 3`                                   |
+| `fan-out`  | 对数组中的每个 item 执行一个 step 模板；当前实现是顺序展开       | `items: "{{ inputs.modules }}"`                       |
+| `fan-in`   | 汇总 fan-out 结果，供后续步骤使用                     | `wait_for: [parallel-impl]`                           |
+
+
+#### C.2.5 企业落地的推荐改造
+
+如果要在公司里推广，建议不要直接把 bundled `speckit` workflow 当最终版，而是把它当**起点模板**。更实用的版本通常会变成：
+
+```yaml
+steps:
+  - id: specify
+    command: speckit.specify
+    input:
+      args: "{{ inputs.spec }}"
+
+  - id: clarify
+    command: speckit.clarify
+
+  - id: review-spec
+    type: gate
+    message: "产品/研发负责人确认 spec 是否足够清楚。"
+    options: [approve, reject]
+    on_reject: abort
+
+  - id: plan
+    command: speckit.plan
+
+  - id: architecture-review
+    type: gate
+    message: "确认数据库表结构、API 设计、权限、监控、兼容性方案。"
+    options: [approve, reject]
+    on_reject: abort
+
+  - id: tasks
+    command: speckit.tasks
+
+  - id: task-review
+    type: gate
+    message: "确认任务是否可独立验收、是否适合并行开发。"
+    options: [approve, reject]
+    on_reject: abort
+
+  - id: implement
+    command: speckit.implement
+
+  - id: test
+    type: shell
+    run: "npm test"
+```
+
+最佳实践是：**把 workflow 用来固化流程骨架，把模板/constitution/checklist 用来固化内容标准，把 gate 用来保留人的判断权**。这样既不会退回到"人工一条条输命令"，也不会变成"AI 不经审核一路写到底"。
 
 ---
 
 ## 附录 D：`/speckit.taskstoissues`——把 tasks 翻译成 GitHub issues
 
-这是**第九条 `speckit.`* 命令**（前八条是 constitution/specify/clarify/plan/tasks/analyze/checklist/implement），模板在 `templates/commands/taskstoissues.md`，它比较特别：
+这是*第九条 `speckit.` 命令**（前八条是 constitution/specify/clarify/plan/tasks/analyze/checklist/implement），模板在 `templates/commands/taskstoissues.md`，它比较特别：
 
 **定位**：tasks.md 是项目内部的"工作队列"，但团队协作需要把任务真正推到**项目管理工具**里。taskstoissues 就是把 tasks.md 里 `- [ ]` 项逐条变成 GitHub issue 的桥梁。
 
@@ -3079,7 +3257,7 @@ flowchart LR
 - 第一步 `release-trigger.yml` 是**受控的本地化变更**：在仓库里 bump `pyproject.toml`、更 `CHANGELOG.md`、创建 tag、发 PR 给 maintainers review——所有内容都可审计
 - 第二步 `release.yml` 是**被动触发**：它只在"tag 真的被推上去"后才跑，生成 GitHub Release 资产——这保证"tag 上的内容 = PR 里通过 review 的内容"
 
-**与 `/speckit.`* 命令的关系 = 几乎没有**。grep 全仓库，`.github/workflows/*.yml` 和 `templates/commands/*.md` 之间**零代码引用**。唯一的"间接桥"是：`release.yml` 产出的 wheel 被用户 `pip install specify-cli` 装到本地，他们才能跑 `specify init`——**发布艺术工件才是唯一接缝**。
+*与 `/speckit.` 命令的关系 = 几乎没有。grep 全仓库，`.github/workflows/*.yml` 和 `templates/commands/*.md` 之间*零代码引用*。唯一的"间接桥"是：`release.yml` 产出的 wheel 被用户 `pip install specify-cli` 装到本地，他们才能跑 `specify init`——**发布艺术工件才是唯一接缝**。
 
 这种清晰的分层让两类贡献者各司其职：
 
@@ -3090,5 +3268,5 @@ flowchart LR
 
 **一句话总结**：
 
-> `specify init` 的本质是“**把本地资产按 agent 约定布线**”；`/speckit.constitution` 的本质是“**让 AI 按 SKILL.md 的工作流生成并维护项目宪法**”；`/speckit.specify` 的本质是“**把自然语言需求翻译成 WHAT-only 的结构化 spec，并为本 feature 开辟独立工作目录**”，它不直接审判宪法，把硬门槛留给 `/speckit.plan`；`/speckit.clarify` 的本质是“**按 11 类 taxonomy 主动扫描已有 spec 并修订，给 `/speckit.plan` 喂干净食材**”，它和 `/speckit.specify` 的 3 问 validation 是"**模板填空 vs 主动挑刺**"的关系；`/speckit.plan` 的本质是“**第一次从 WHAT 进入 HOW，通过 Pre/Phase 0/Phase 1 三段式把技术选型、研究结论、数据模型、契约文件全部定稿，并以两次 Constitution Check 作为硬门槛**”——它是 SDD 里**第一个真正显式加载并审判宪法的命令**；`/speckit.tasks` 的本质是“**把设计产物机械地翻译成带文件路径的原子 checkbox**”，通过**文件路径锚点 + [P] 并行约束 + Artifact 一一映射 + Phase 隔离 + Checkpoint 独立可测 + LLM 可独立执行**六条正交约束把粒度压进"一个文件 × 一个明确产物"的甜区；`/speckit.implement` 则是“**SDD 流水线里唯一真正改动源码的命令**”，本质是"**以 tasks.md 为工作队列的状态机执行器**"——用 Checklists 门禁守住动手前最后一扇门、用 Phase-by-Phase + TDD + `[P]` 并行 + 文件串行四条规则串执行、用 `[ ] → [X]` 回写让 tasks.md 变成可中断续跑的"活状态"、把 ignore 文件维护与自动 commit hook 做成前后的"卫生准备 / 收尾动作"，它不再审宪法、不再做决策，只忠实执行上游审判过的设计；**Extensions 机制**则是“**把核心永远保持精简、把一切面向工具栈的自动化下放到插件层**”的设计——核心命令对 extensions 零感知，仅在固定时机广播 `before_`* / `after_*` 事件，由项目级 `.specify/extensions.yml` 决定谁来接、接了做什么；而 `/speckit.clarify`、`/speckit.analyze`、`/speckit.checklist` 这三个**可选命令**则组成了 SDD 的"质量保险层"——`clarify` 纵深扫 spec 内部的坑（11 类 taxonomy × 最多 5 问）、`analyze` 横扫 spec+plan+tasks 的漂移（3 文档 × 6 类检测 × READ-ONLY 报告）、`checklist` 给 requirements 本身写"单元测试"（"Unit tests for English"，被 implement 的 Checklists 门禁消费），核心 5 条命令保证"能跑通"、这 3 条命令保证"跑得好"；`constitution.md` 不是给 AI 的说明书，而是**被整个 SDD 命令链反复读取的决策门槛**，这正是它和 `AGENTS.md` 这类 agent 指南的根本区别；而 SDD 主干之外还有三条并行的扩展线——**Extensions**（加 hook/加命令）、**Presets**（版本化覆盖模板）、**Workflows**（10 种 step 类型组成的可恢复编排引擎，init 时就自动装了一条 bundled `speckit` workflow）——通过**项目级 `.specify/` 共享基础设施 + 4 级模板解析优先级栈**把 "一次 init，任意切 agent、任意叠插件、任意换模板、任意编排流水线" 变成可能；第九条命令 `/speckit.taskstoissues` 则是把 tasks.md 桥接到 GitHub issues 的 MCP 封装，供团队协作场景使用；最后 `.github/workflows/` 只是**仓库自身**的 CI/CD，和用户项目的 SDD 工作流完全解耦，唯一的接缝是发布出的 wheel 被用户 `pip install` 装到本地。
+> `specify init` 的本质是“**把本地资产按 agent 约定布线**”；`/speckit.constitution` 的本质是“**让 AI 按 SKILL.md 的工作流生成并维护项目宪法**”；`/speckit.specify` 的本质是“**把自然语言需求翻译成 WHAT-only 的结构化 spec，并为本 feature 开辟独立工作目录**”，它不直接审判宪法，把硬门槛留给 `/speckit.plan`；`/speckit.clarify` 的本质是“**按 11 类 taxonomy 主动扫描已有 spec 并修订，给 `/speckit.plan` 喂干净食材**”，它和 `/speckit.specify` 的 3 问 validation 是"**模板填空 vs 主动挑刺**"的关系；`/speckit.plan` 的本质是“**第一次从 WHAT 进入 HOW，通过 Pre/Phase 0/Phase 1 三段式把技术选型、研究结论、数据模型、契约文件全部定稿，并以两次 Constitution Check 作为硬门槛**”——它是 SDD 里**第一个真正显式加载并审判宪法的命令**；`/speckit.tasks` 的本质是“**把设计产物机械地翻译成带文件路径的原子 checkbox**”，通过**文件路径锚点 + [P] 并行约束 + Artifact 一一映射 + Phase 隔离 + Checkpoint 独立可测 + LLM 可独立执行**六条正交约束把粒度压进"一个文件 × 一个明确产物"的甜区；`/speckit.implement` 则是“**SDD 流水线里唯一真正改动源码的命令**”，本质是"**以 tasks.md 为工作队列的状态机执行器**"——用 Checklists 门禁守住动手前最后一扇门、用 Phase-by-Phase + TDD + `[P]` 并行 + 文件串行四条规则串执行、用 `[ ] → [X]` 回写让 tasks.md 变成可中断续跑的"活状态"、把 ignore 文件维护与自动 commit hook 做成前后的"卫生准备 / 收尾动作"，它不再审宪法、不再做决策，只忠实执行上游审判过的设计；**Extensions 机制**则是“**把核心永远保持精简、把一切面向工具栈的自动化下放到插件层**”的设计——核心命令对 extensions 零感知，仅在固定时机广播 `before_`* / `after_`* 事件，由项目级 `.specify/extensions.yml` 决定谁来接、接了做什么；而 `/speckit.clarify`、`/speckit.analyze`、`/speckit.checklist` 这三个**可选命令**则组成了 SDD 的"质量保险层"——`clarify` 纵深扫 spec 内部的坑（11 类 taxonomy × 最多 5 问）、`analyze` 横扫 spec+plan+tasks 的漂移（3 文档 × 6 类检测 × READ-ONLY 报告）、`checklist` 给 requirements 本身写"单元测试"（"Unit tests for English"，被 implement 的 Checklists 门禁消费），核心 5 条命令保证"能跑通"、这 3 条命令保证"跑得好"；`constitution.md` 不是给 AI 的说明书，而是**被整个 SDD 命令链反复读取的决策门槛**，这正是它和 `AGENTS.md` 这类 agent 指南的根本区别；而 SDD 主干之外还有三条并行的扩展线——**Extensions**（加 hook/加命令）、**Presets**（版本化覆盖模板）、**Workflows**（10 种 step 类型组成的可恢复编排引擎，init 时就自动装了一条 bundled `speckit` workflow）——通过**项目级 `.specify/` 共享基础设施 + 4 级模板解析优先级栈**把 "一次 init，任意切 agent、任意叠插件、任意换模板、任意编排流水线" 变成可能；第九条命令 `/speckit.taskstoissues` 则是把 tasks.md 桥接到 GitHub issues 的 MCP 封装，供团队协作场景使用；最后 `.github/workflows/` 只是**仓库自身**的 CI/CD，和用户项目的 SDD 工作流完全解耦，唯一的接缝是发布出的 wheel 被用户 `pip install` 装到本地。
 
