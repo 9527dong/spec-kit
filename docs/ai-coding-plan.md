@@ -1,161 +1,346 @@
-这是个典型的"企业级 AI coding 规范化落地"场景。基于前面我们梳理的 spec-kit 架构，我按**扩展点地图 → 模板分层策略 → 推广落地 Plan** 三部分给你一套完整方案。
+# 企业级 AI Coding 落地计划
+
+这份计划的主线是：先看清 AI Coding 在公司研发流程里的完整闭环，再按闭环拆出需要定制的模板、扩展和门禁；等基础能力准备好后，用 1 个真实 demo 验证效率提升，最后再进入团队试点、全研发覆盖和数据驱动迭代。
 
 ---
 
-## 一、企业定制化的扩展点全景——你想到的只是一小块
+## 一、AI Coding 开发流程全景图
 
-spec-kit 给了**五层**可扩展性，你说的"plan 环节符合公司规定"只触及其中一层（Templates）。先看完整地图：
+下面这张图描述的是一个完整的 Cursor + Spec Kit 企业研发闭环：PM 仍然在 Jira 写需求，开发人员在 Cursor 里拉取需求、生成 `spec.md`、`plan.md`、`tasks.md`，再按任务完成编码、测试和本地覆盖率检查。企业 Extensions 负责把 Jira、Git、内部文档、本地测试脚本等能力接进来。
 
+```mermaid
+sequenceDiagram
+    actor PM as 产品经理
+    participant Jira as Jira
+    actor Dev as 开发人员
+    participant Cursor as Cursor + Spec Kit
+    participant Ext as 企业 Extensions
+    participant Templates as Constitution + Templates/Presets
+    participant Git as Git 远程仓库
+
+    PM->>Jira: 编写需求单（背景、用户故事、验收标准）
+
+    rect rgb(245, 248, 255)
+    Note over Dev,Templates: 阶段 1：需求设计
+    Dev->>Cursor: 输入 Jira 单号，执行 /speckit.specify
+    Cursor->>Ext: before_specify: jira-pull + git-feature-branch
+    Ext->>Jira: 拉取需求标题、描述、验收标准、附件
+    Jira-->>Ext: 返回需求内容
+    Ext-->>Cursor: 注入需求上下文，并创建/切换 feature/JIRA-xxx 分支
+    Cursor->>Templates: 套用 spec-template + 公司/岗位 preset
+    Templates-->>Cursor: 生成 spec.md（用户故事、验收场景、功能需求、成功标准、边界条件）
+    Dev->>Cursor: 检查 spec.md，补充澄清问题
+    Cursor->>Ext: after_specify: spec-artifact-publish + requirements-sync
+    Ext->>Git: 提交 spec.md 等需求产物并 push
+    Ext->>Jira: 回写 spec 摘要和 Git 访问链接
+    end
+
+    rect rgb(248, 255, 245)
+    Note over Dev,Templates: 阶段 2：计划和任务
+    Dev->>Cursor: 确认 spec 后执行 /speckit.plan
+    Cursor->>Ext: before_plan: 拉取内部架构模板、组件文档、参考方案
+    Cursor->>Templates: 执行 Constitution Check + plan-template/preset
+    Templates-->>Cursor: 生成 plan.md、data-model.md、contracts/、quickstart.md
+    Cursor->>Ext: after_plan: plan-review-subAgent 或架构评审提示
+    Ext-->>Cursor: 返回关键修改意见
+    Cursor->>Cursor: 修改完善 plan
+    Dev->>Cursor: 执行 /speckit.tasks
+    Cursor->>Templates: 套用 tasks-template + checklist-template
+    Templates-->>Cursor: 生成 tasks.md（实现任务、测试任务、评审任务、本地检查任务）
+    Cursor->>Ext: after_tasks: git-commit + jira-issues-sync
+    Ext->>Git: 提交 plan/tasks 等设计产物并 push
+    Ext->>Jira: 将 tasks.md 拆成 Jira 子任务或更新看板
+    end
+
+    rect rgb(255, 250, 245)
+    Note over Dev,Ext: 阶段 3：编码和测试
+    Dev->>Cursor: 执行 /speckit.implement
+    Cursor->>Ext: before_implement: 检查本地环境，拉取内部组件文档和脚手架
+    Cursor-->>Dev: 按 tasks.md 实现代码、测试和文档
+    Cursor->>Ext: after_implement: test-coverage-gate，本地触发
+    Ext->>Ext: 执行本地测试命令并生成覆盖率报告
+    Ext-->>Dev: 返回测试结果和覆盖率数据
+    Dev->>Git: 提交代码并 push，创建PR
+    Dev->>Jira: 关联 PR / 提交实现状态，进入评审流程
+    end
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│ Layer 5  Integrations (Agent 层)                                 │
-│ → 统一公司用的 AI Agent、context 规则                             │
-├──────────────────────────────────────────────────────────────────┤
-│ Layer 4  Workflows (编排层)                                      │
-│ → 把公司 SOP 编排成可一键执行的流水线（评审→实施→上线）           │
-├──────────────────────────────────────────────────────────────────┤
-│ Layer 3  Extensions (插件层)                                     │
-│ → 9 对 before_*/after_* hook 对接 Jira/GitLab/DBA/SAST/API 网关   │
-├──────────────────────────────────────────────────────────────────┤
-│ Layer 2  Templates + Presets (内容框架)                          │
-│ → spec/plan/tasks/checklist 四张模板的岗位定制                    │
-├──────────────────────────────────────────────────────────────────┤
-│ Layer 1  Constitution (宪法层)                                   │
-│ → 公司级红线（合规/安全/TDD/审查等），被 /speckit.plan 硬审判     │
-└──────────────────────────────────────────────────────────────────┘
+
+这张图里有三个关键结论：
+
+1. `spec.md`、`plan.md`、`tasks.md` 不是孤立文档，而是从需求到实现的连续输入输出链路。
+2. Templates/Presets 负责让 AI 生成的内容符合公司规范，Extensions 负责把这些内容同步到 Jira、Git 和内部协作系统。
+3. 覆盖率检查不应该只写在文档里，能自动化的要通过 hook 或本地脚本直接执行。
+
+---
+
+## 二、基于全景图拆分的三阶段建设任务
+
+落地时不要一开始就做全量平台。建议先围绕“需求设计、计划和任务、编码和测试”三段，各自完成最小可用的模板和 extension，再用 demo 串起来验证。
+
+### 阶段 1：需求设计
+
+**目标**：把 Jira 里的自然语言需求变成研发和 PM 都能确认的 `spec.md`，并保证 spec 有清晰的用户故事、验收场景、功能需求、成功标准和边界条件。
+
+**建议周期**：2-3 周。
+
+**需要定制的 Templates / Presets**：
+
+| 定制项 | 内容 |
+|---|---|
+| `spec-template.md` | 增加业务价值、上下游依赖、用户影响范围、合规/隐私影响、成功指标 |
+| `checklist-template.md` | 增加需求完整性检查：验收场景是否覆盖主流程、边界条件是否明确、成功标准是否可衡量 |
+| `company-base` preset | 固化公司通用需求规范：敏感数据、审计要求、对外接口、灰度范围 |
+
+**需要开发的 Extensions**：
+
+| Hook | Extension | 作用 |
+|---|---|---|
+| `before_specify` | `jira-pull` | 输入 Jira 单号后自动拉取标题、描述、验收标准、附件 |
+| `before_specify` | `git-feature-branch` | 自动创建或切换 `feature/JIRA-xxx` 分支 |
+| `after_specify` | `spec-artifact-publish` | 将 `spec.md` 提交到远程 Git，生成可访问链接 |
+| `after_specify` | `requirements-sync` | 将 spec 摘要和链接同步回 Jira，避免 PM 和研发维护两份需求 |
+
+**阶段完成标准**：
+
+- 开发人员可以只输入 Jira 单号就生成第一版 `spec.md`。
+- PM 和开发可以基于同一份 `spec.md` 确认需求。
+- `spec.md` 能被后续 `/speckit.plan` 直接使用，且没有明显的需求断层。
+
+### 阶段 2：计划和任务
+
+**目标**：把确认后的 `spec.md` 转成符合公司工程规范的 `plan.md` 和 `tasks.md`，提前暴露架构、DB、API、监控、性能、安全和评审要求。
+
+**建议周期**：3-5 周。
+
+**需要定制的 Templates / Presets**：
+
+| 定制项 | 内容 |
+|---|---|
+| `.specify/memory/constitution.md` | 写入公司红线：安全、合规、核心链路测试、架构边界、发布前置条件 |
+| `plan-template.md` | 增加 DB 设计、API 设计、监控埋点、日志规范、错误码、性能基线、灰度/回滚、隐私合规 |
+| `tasks-template.md` | 增加测试任务、Code Review、DBA Review、本地覆盖率检查、文档更新、上线检查等任务类型 |
+| `checklist-template.md` | 增加计划评审 checklist：DBA 是否可审、接口是否可测、监控是否可验收 |
+| 岗位 preset | 为后端、前端、iOS、Android、数据工程分别补充岗位特有检查项 |
+
+**需要开发的 Extensions**：
+
+| Hook | Extension | 作用 |
+|---|---|---|
+| `before_plan` | `arch-template-fetcher` | 根据项目类型拉取内部架构模板、技术组件文档和参考方案 |
+| `after_plan` | `plan-review-subAgent` | 自动检查 plan 是否缺少 DB、API、监控、性能、灰度、合规等章节 |
+| `after_tasks` | `git-commit` | 将 `plan.md`、`tasks.md` 等设计产物单独提交，便于审计和回滚 |
+| `after_tasks` | `jira-issues-sync` | 将 `tasks.md` 拆成 Jira 子任务或更新看板 |
+
+**阶段完成标准**：
+
+- `plan.md` 能覆盖公司发布前一定会被问到的问题，而不是只写实现思路。
+- `tasks.md` 不只是开发 TODO，还包含测试、评审、本地检查和文档任务。
+- Jira 看板可以从 `tasks.md` 自动生成或更新，减少手工拆任务。
+
+### 阶段 3：编码和测试
+
+**目标**：让开发人员按 `tasks.md` 完成代码、测试和文档，并用本地脚本获取测试覆盖率，确认“完成”不是主观声明。
+
+**建议周期**：2-4 周。
+
+**需要定制的 Templates / Presets**：
+
+| 定制项 | 内容 |
+|---|---|
+| `tasks-template.md` | 明确每类任务的完成定义，例如测试通过、覆盖率达标、文档更新、API 契约同步 |
+| `quickstart.md` 约定 | 规定最小可复现验证路径，方便 reviewer 和 QA 跑通主流程 |
+| 岗位 preset | 前端增加 E2E/Lighthouse，后端增加 contract test/压测，移动端增加包体积和兼容性测试 |
+
+**需要开发的 Extensions / 脚本**：
+
+| Hook / 位置 | Extension 或脚本 | 作用 |
+|---|---|---|
+| `before_implement` | `ide-setup-check` | 检查本地依赖、环境变量、SDK、测试工具是否齐全 |
+| `before_implement` | `internal-doc-fetcher` | 拉取内部组件、API 网关、SDK、脚手架文档 |
+| `after_implement` | `test-coverage-gate` | 在本地运行测试命令，生成覆盖率报告，不达标则返回失败 |
+| 本地脚本 | `coverage-report` | 读取覆盖率结果并输出摘要，例如行覆盖率、分支覆盖率、未覆盖文件 |
+| 本地脚本 | `api-doc-check` | 如有 API 变更，在本地检查接口文档是否同步更新 |
+
+**阶段完成标准**：
+
+- 开发人员能按 `tasks.md` 完成代码和测试，不需要额外追问“还差什么”。
+- 覆盖率检查在本地运行，输出覆盖率报告和是否达标的结论。
+- 先不要设计依赖平台能力的扫描流程，把重点放在可落地的本地测试和覆盖率统计。
+
+---
+
+## 三、Demo 验证：先证明流程有效，再推广
+
+前三阶段的基础能力完成后，不建议马上全公司推广。应该先选 1 个真实业务 demo，完整跑通从 Jira 到 spec、plan、tasks、implement、本地覆盖率检查的闭环，用数据证明效率提升。
+
+**建议周期**：2 周。
+
+**Demo 选型原则**：
+
+- 选择“中等复杂度、小而全”的 feature，最好包含前端、后端、DB、API、测试和文档。
+- 不要选太大的项目，容易跑不完；也不要选太简单的改文案需求，体现不出 Spec Kit 的价值。
+- 最好选一个历史上经常返工的类型，例如接口字段反复变更、DBA 审查经常补材料、验收标准不清晰。
+
+**Demo 执行方式**：
+
+1. 准备一个历史对照 feature，记录它的需求确认耗时、开发耗时、PR 轮次、返工次数、线上 bug。
+2. 用新的 AI Coding 流程跑一个同等复杂度 feature。
+3. 记录每一步耗时：`specify`、`plan`、`tasks`、`implement`、测试修复、评审修复。
+4. 评估 artifact 质量：PM 是否看得懂 `spec.md`，Tech Lead 是否能直接审 `plan.md`，开发是否能按 `tasks.md` 独立推进。
+5. 输出 1 份 demo 复盘文档，说明节省了哪里、增加了哪里、哪些能力还不适合推广。
+
+**进入公司推广的判断标准**：
+
+- `spec.md` 能明显减少需求澄清轮次。
+- `plan.md` 能提前暴露 DB、API、监控、灰度、合规等问题。
+- `tasks.md` 能减少 Tech Lead 手工拆任务成本。
+- 覆盖率检查能在本地稳定运行，并能输出清晰的覆盖率数据。
+- 至少有一个真实 feature 的 lead time、返工次数或评审轮次有可量化改善。
+
+---
+
+## 四、公司推广落地路线
+
+Demo 通过后，再进入推广。节奏建议是：1 个团队深度使用，全研发覆盖，根据数据持续迭代。不要跳过单团队试点，否则问题会在全公司范围内同时爆发。
+
+### P1：1 个团队深度使用
+
+**建议周期**：6-8 周。
+
+**目标**：让一个完整研发小组形成稳定用法，而不是只跑一次演示。
+
+**动作清单**：
+
+- 选择 1 个愿意配合、业务复杂度适中的团队，5-10 人比较合适。
+- 该团队所有新 feature 默认走 `/speckit.specify`、`/speckit.plan`、`/speckit.tasks`。
+- Tech Lead 每周复盘模板是否过重、哪些字段没人看、哪些 extension 真正省时间。
+- 产出 `company-base@1.0`、核心 extension v1、团队使用手册。
+- 收集指标：lead time、PR 轮次、返工次数、线上 bug、模板遵从率、开发满意度。
+
+**成功标志**：
+
+- 团队成员不依赖推动者也能独立完成流程。
+- 真实 feature 数量达到 3-5 个。
+- 至少 2 个指标出现改善，例如 lead time 下降、PR 返工减少、需求澄清减少。
+
+### P2：全研发覆盖
+
+**建议周期**：8-12 周。如果公司规模较大，可以先经过 3-5 个团队的扩展期，再进入全覆盖。
+
+**目标**：让 AI Coding 流程成为默认研发流程，而不是少数团队的试验。
+
+**动作清单**：
+
+- 建内部 preset catalog 和 extension catalog，提供统一安装入口。
+- 发布岗位 preset：`backend-service`、`web-frontend`、`ios-app`、`android-app`、`data-engineer`。
+- 建立培训体系：30 分钟入门视频、1 小时深入讲座、分岗位 Q&A、每周 office hour。
+- 增加轻量门禁：PR 必须关联 `specs/NNN-xxx/`，没有 `plan.md` 的复杂 feature 需要额外说明。
+- 建立治理小组：架构师、资深工程师、PM、安全、DBA 共同维护 constitution、preset 和 extension。
+
+**成功标志**：
+
+- 大部分新 feature 都有 `spec.md`、`plan.md`、`tasks.md`。
+- 不同岗位使用同一套公司基座规则，没有明显模板漂移。
+- Jira、Git 和本地检查脚本的关键动作基本自动化。
+
+### P3：根据数据持续迭代
+
+**建议周期**：持续进行，建议按月复盘、按季度发版。
+
+**目标**：把 AI Coding 从“一次推广项目”变成持续演进的研发基础设施。
+
+**动作清单**：
+
+- 建立度量 dashboard：lead time、rework rate、覆盖率、线上 bug、需求澄清次数、artifact 完整度。
+- 每月复盘低效模板字段，删除没人读的字段，强化真正影响质量的字段。
+- 每季度发布 `company-base`、岗位 preset、核心 extension 的版本。
+- 将优秀 spec、plan、tasks 作为样例沉淀到内部文档。
+- 根据数据决定是否扩大到算法、测试、SRE、数据平台等团队。
+
+**成功标志**：
+
+- 模板和 extension 能根据数据持续变轻、变准。
+- 新人 onboarding 可以通过标准流程快速理解需求、计划和任务。
+- 管理层能看到效率指标，而不是只听“AI Coding 很好用”的主观反馈。
+
+---
+
+## 五、整体逻辑检查与规划合理性
+
+整体规划是合理的，但需要注意几个边界：
+
+1. **先全景、再建设、再 demo、再推广**这个顺序是对的。原来直接从扩展点讲到推广，容易让读者不知道为什么要做这些 extension。现在先给研发流程全景图，后面每个定制任务都有来源。
+2. **Demo 应该放在基础能力之后、公司推广之前**。如果没有最小可用模板和 extension，demo 只能证明手工流程能跑；如果没有 demo 就推广，则无法证明流程真的提升效率。
+3. **三阶段建设不要无限扩张**。第一版只做核心链路：Jira 拉需求、生成 spec/plan/tasks、提交 artifact、同步 Jira、本地覆盖率检查。DBA 自动送审、API 文档上架可以作为第二批。
+4. **Constitution 不能替代真实审批和发布控制**。它只能在设计期提前暴露问题，生产发布仍然需要审批、灰度、回滚和变更窗口。
+5. **模板字段必须有读者**。如果 DBA 不看 DB 章节，安全不看合规章节，模板就会变成填空负担。每个必填项都应该对应一个 reviewer 或自动检查。
+6. **推广指标要提前定义**。至少要记录 lead time、PR 轮次、返工次数、需求澄清次数、线上 bug、开发满意度，否则无法判断是不是值得全公司推广。
+
+---
+
+## 整体 Timeline
+
+下面的时间线从 2026 年 5 月开始，以两周为一个时间刻度。它只覆盖正文第 2、3、4 部分：先完成三阶段基础能力建设，再做 1 个真实 demo 验证，最后进入团队试点、全研发覆盖和数据迭代。
+
+```mermaid
+gantt
+    title AI Coding 落地 Timeline（2026.05 起）
+    dateFormat  YYYY-MM-DD
+    axisFormat  %m/%d
+    tickInterval 2week
+
+    section 二、三阶段基础能力建设
+    需求设计模板与 Jira 拉取打通           :p2_1, 2026-05-01, 14d
+    spec artifact 提交与 Jira 回写          :p2_2, 2026-05-15, 14d
+    Constitution 与 plan/tasks 模板定制     :p2_3, 2026-05-29, 28d
+    本地覆盖率脚本与 implement hook         :p2_4, 2026-06-26, 14d
+    三阶段最小闭环联调                      :p2_5, 2026-07-10, 14d
+
+    section 三、Demo 验证
+    Demo feature 选型与历史对照数据准备     :p3_1, 2026-07-24, 14d
+    跑通 specify/plan/tasks/implement 全流程 :p3_2, 2026-08-07, 14d
+    Demo 复盘与推广决策                     :p3_3, 2026-08-21, 14d
+
+    section 四、公司推广落地
+    选择试点团队并完成培训                  :p4_1, 2026-09-04, 14d
+    试点团队真实 feature 陪跑               :p4_2, 2026-09-18, 42d
+    试点复盘与 company-base v1.1            :p4_3, 2026-10-30, 14d
+    内部 preset/extension catalog 建设      :p4_4, 2026-11-13, 28d
+    岗位 preset 发布与全员培训              :p4_5, 2026-12-11, 28d
+    全研发轻量门禁与默认流程推广            :p4_6, 2027-01-08, 28d
+    度量 dashboard 与月度复盘机制           :p4_7, 2027-02-05, 42d
 ```
 
-### Layer 1：Constitution（最先要做，也最容易被忽略）
+这条路线的关键不是一次性把所有模板和扩展做完，而是先打通最小闭环，用真实 demo 证明效率提升，再把有效部分产品化、版本化、治理化。
 
-你现在完全**没提到**这一层，但它是最上游的定海神针。建议放入的"公司红线"：
+---
+
+## 附录：基础能力说明
+
+这一部分不是独立的落地阶段，而是对前文三阶段中反复出现的底层能力做补充说明。真正排期时，仍然应该按“需求设计、计划和任务、编码和测试”的主流程推进。
+
+### 1. Constitution：公司红线
+
+`.specify/memory/constitution.md` 适合放 `/speckit.plan` 阶段就能判断的设计和实现前置条件，例如：
 
 | 类别 | 例子 |
 |---|---|
-| **合规** | 个保法/GDPR 数据最小化、敏感数据（身份证、手机号、金额）必须脱敏存储；未通过数据分类评级的字段禁止入库 |
-| **安全** | 禁止明文存储密码 / 凭证；对外 API 强制 TLS；禁用 eval/反序列化不可信数据；引入 SAST/SCA 规则 |
-| **质量** | 核心链路单测覆盖率 ≥70%；contract test 是 MUST；P0 bug 48h 响应 SLA |
-| **架构** | 微服务边界需要架构委员会备案；不允许绕过统一网关；禁止跨库 JOIN |
-| **发布** | 灰度比例 → 1% → 10% → 100%；回滚预案必填；变更窗口 |
-| **开源** | 只许用 License 白名单内的依赖（MIT/Apache/BSD）；GPL/AGPL 需法务审批 |
+| 合规 | 敏感数据必须脱敏存储，关键数据必须有生命周期和留存说明 |
+| 安全 | 禁止明文存储密码、token、密钥，外部输入必须校验 |
+| 质量 | 核心链路必须有 contract test，关键模块覆盖率必须达到阈值 |
+| 架构 | 禁止跨库 JOIN，外部依赖必须有降级或超时策略 |
 
-这些写进 `.specify/memory/constitution.md`，任何 `/speckit.plan` 违规都会在 Constitution Check 门禁暴露——**比事后 code review 捕获早 3-5 天**。
+注意：Constitution 适合做设计期约束，不应该替代真实发布系统里的审批、灰度、变更窗口和生产运维控制。
 
-### Layer 2：Templates / Presets（你已经想到的部分，但漏了很多）
+### 2. Preset：模板分层
 
-你提到的 "DB 表结构设计、API 设计" 属于 `plan-template.md`，但这两个点都有**隐藏深度**，我给你把企业实际要管的维度全列出来：
-
-#### 2.1 `plan-template.md` 企业定制必补的章节
-
-| 章节 | 你提到了吗 | 为什么必须补 |
-|---|---|---|
-| **数据库设计** | ✅ | 但不只是"表结构"，还要有：命名规范、索引策略、**迁移脚本与回滚脚本成对**、DDL 变更审计 |
-| **API 设计** | ✅ | 同样不只是接口，还要：版本策略（URL/Header/Accept）、鉴权模式（OAuth2/JWT/API-Key）、**限流阈值**、兼容性承诺、错误码 |
-| **监控埋点** | ❌ | 每个关键操作要列埋点字段、上报通道、告警阈值 |
-| **日志规范** | ❌ | 结构化日志 schema、关键 traceId 链路 |
-| **错误码** | ❌ | 统一错误码段位分配、用户可见 vs 内部 code |
-| **容量 / 性能基线** | ❌ | QPS、P99 延时、内存占用目标——这是上线的硬门槛 |
-| **灰度 / 回滚策略** | ❌ | 发布计划、开关设计、回滚 SOP |
-| **隐私合规评估** | ❌ | 是否涉及个人信息？数据生命周期？留存时长？ |
-| **第三方依赖白名单** | ❌ | 新引入的库需列出 license、维护状态、CVE 记录 |
-| **国际化 / 本地化** | ❌ | 如面向多国家/语言 |
-| **可观测性** | ❌ | SLO/SLI 定义、告警 runbook |
-
-一条经验法则：**凡是"发布前被 review 过的点"都应该提前写进模板**，让 `/speckit.plan` 生成时 AI 就主动填，而不是 PR 阶段被审委会一条条打回。
-
-#### 2.2 `spec-template.md` 也要改
-
-| 补充章节 | 作用 |
-|---|---|
-| 业务价值 / 北极星指标 | 让产品需求和业务目标对齐 |
-| 上下游依赖方 | 协调字段、避免临时加急 |
-| 法务 / 合规评估 | 涉及金融、医疗、儿童数据等前置判断 |
-| 数据分类分级 | 对每一类字段做级别标注（公开/内部/敏感/核心） |
-
-#### 2.3 `tasks-template.md`、`checklist-template.md` 也要改
-
-- tasks: 在 Phase 末尾加 `[ ] Code Review by Tech Lead`、`[ ] DBA Review`、`[ ] Security Scan Pass`
-- checklist: 各岗位的岗位级 QA 清单（见第二部分）
-
-### Layer 3：Extensions（流程自动化——这是 ROI 最高的扩展点）
-
-你完全没提这一层，但这是**真正把"规范"变成"不费力就遵守"的关键**。利用 9 对 `before_*/after_*` hook，把公司内部系统串进来：
-
-| Hook 时机 | 可挂的 extension | 解决的痛点 |
-|---|---|---|
-| `before_specify` | `jira-pull`：自动从 Jira/TAPD 拉需求单 | 开发者不用复制粘贴 PM 的需求 |
-| `after_specify` | `requirements-sync`：把生成的 spec.md 反推回 PM 系统 | PM 和研发拿同一份 spec |
-| `before_plan` | `arch-template-fetcher`：从内部架构库拉参考模板 | 别从零想架构 |
-| `after_plan` | `dba-review-auto`：DDL 自动提 DBA 工单 / `security-scan`：扫 plan 里的架构隐患 | 提早介入，不卡在 release 阶段 |
-| `after_tasks` | `jira-issues-sync`（类似 taskstoissues 但对接 Jira）| tasks.md 自动落地到公司看板 |
-| `before_implement` | `ide-setup-check`：验证本地环境 / 拉脚手架 | 降低新人启动成本 |
-| `after_implement` | `sonar-trigger`：推送代码扫描 / `api-doc-push`：API 文档自动上架内部网关 / `test-coverage-gate` | 符合 DoD |
-
-**实现成本**：每个 extension 本质就是一个 `extension.yml` + 若干 Markdown 命令 + 可选脚本，约 50-200 行代码。小团队内部 1-2 周能产出一个核心 extension。
-
-### Layer 4：Workflows（团队级 SOP 编排）
-
-你问的"推广"本质上就是"SOP 化"。用 spec-kit 的 workflow 引擎可以把公司研发流程编排成一条可一键执行的流水线：
-
-```yaml
-# company-standard-workflow.yml（示例骨架）
-id: company-feature-delivery
-steps:
-  - id: pull-requirement
-    type: command
-    command: /speckit.specify          # 自动触发 jira-pull hook
-
-  - id: clarify-gate
-    type: gate
-    approvers: [product-owner]         # PM 确认 spec 与需求对齐
-
-  - id: plan
-    type: command
-    command: /speckit.plan
-
-  - id: arch-review
-    type: gate
-    approvers: [tech-lead, architect]  # 架构评审（Constitution Check 之外的人工确认）
-
-  - id: tasks
-    type: command
-    command: /speckit.tasks
-
-  - id: dba-review
-    type: if_then
-    if: "{{ plan.has_ddl_changes }}"
-    then:
-      - type: gate
-        approvers: [dba]
-
-  - id: implement
-    type: command
-    command: /speckit.implement
-
-  - id: security-scan
-    type: shell
-    command: "company-sast-cli scan ."
-```
-
-好处：**新人不用记步骤，跑 `specify workflow run company-feature-delivery` 就按规范走一遍**。
-
-### Layer 5：Integrations（统一 Agent 选型）
-
-企业落地要避免"有人用 Cursor、有人用 Copilot、有人用 Claude"造成的不一致体验。建议：
-
-- 推荐 1-2 个主力 agent（例如 Cursor 做主力、Copilot 做备选）
-- 在 context 文件（如 `.cursor/rules/specify-rules.mdc`）里注入**公司级的 rules**：代码风格、命名、注释语言、禁用 API 清单
-
----
-
-## 二、多岗位模板策略：用 **3 层 Preset 继承**，不是"每个岗位一套从头写"
-
-你的问题非常关键：**单套不够用，但每个岗位一套又会爆炸**。正确的做法是利用 **Preset 的 priority 栈 + `{CORE_TEMPLATE}` 占位符** 做继承：
+不要为每个岗位从头复制一套模板。推荐用三层 preset：
 
 ```mermaid
 flowchart TB
-    subgraph "Layer C: 业务线补丁 priority=1 (可选)"
-      C1[payment-compliance: 支付合规补丁]
-      C2[healthcare: 医疗合规补丁]
+    subgraph "Layer C: 业务线补丁 priority=1（可选）"
+      C1[payment-compliance<br/>支付合规补丁]
+      C2[healthcare<br/>医疗合规补丁]
     end
 
     subgraph "Layer B: 岗位 preset priority=5"
@@ -167,228 +352,20 @@ flowchart TB
     end
 
     subgraph "Layer A: 公司基座 priority=10"
-      A[company-base:<br/>通用合规/安全/命名/错误码/<br/>发布流程/监控埋点格式]
+      A[company-base<br/>通用合规/安全/命名/错误码/<br/>发布流程/监控埋点格式]
     end
 
     C1 & C2 -->|覆盖或追加| B1 & B2 & B3 & B4 & B5
     B1 & B2 & B3 & B4 & B5 -->|追加或覆盖| A
-    A -->|继承 / 复用| CORE[spec-kit 核心模板]
+    A -->|继承/复用| CORE[spec-kit 核心模板]
 ```
 
-### 实现方式：每个 preset 的模板长这样
+这样公司基座升级一次，可以自动影响所有岗位 preset，避免 5 套模板各自漂移。
 
-```markdown
-<!-- presets/ios-app/templates/plan-template.md -->
-{CORE_TEMPLATE}
+### 3. Extension：流程自动化
 
-## iOS 专属设计（由 ios-app preset 追加）
+Extensions 的作用不是让文档更漂亮，而是减少手工动作：拉 Jira、建分支、提交 artifact、同步 Jira、触发本地测试、生成覆盖率报告、检查 API 文档。优先做高频且重复的动作，低频审批不要一开始就自动化。
 
-### App Store 合规
-- [ ] 涉及 IDFA/IDFV 使用的 App Tracking Transparency 文案
-- [ ] 新增权限（相机/相册/定位）的 Info.plist 用途说明
-- [ ] 若用到第三方 SDK 需列出 Privacy Manifest 字段
+### 4. Integration：统一 Agent 使用方式
 
-### 版本兼容
-- [ ] 最低支持 iOS 版本：[填]
-- [ ] 废弃 API 替代方案：[填]
-
-### 性能基线
-- [ ] 启动时间 < [X]ms
-- [ ] 主线程阻塞 < [Y]ms
-- [ ] 包体积增量 < [Z]MB
-```
-
-这样**基座升级自动传递给所有岗位**，升级一次而不是 5 次。
-
-### 5 个岗位的核心差异点（参考清单）
-
-| 岗位 | spec-template 补充 | plan-template 补充 | tasks-template 补充 |
-|---|---|---|---|
-| **iOS** | App Store 审核要点、权限清单 | Info.plist 字段、iOS 版本矩阵、包体积目标、电量/内存 | 生成 `.xcodeproj`/SPM 配置、TestFlight 上传 |
-| **Android** | Google Play 政策、权限矩阵 | minSdk/targetSdk、ABI 拆分、ProGuard 规则、启动优化 | `build.gradle` 配置、签名、内测通道 |
-| **Web 前端** | 浏览器兼容矩阵、A11y、SEO | 打包策略、首屏性能预算、CDN、骨架屏 | 组件库对齐、E2E、Lighthouse 分数门禁 |
-| **后端** | 流量预估、SLA、多活要求 | **DB schema / API 设计**（你想到的）、限流、幂等、事务边界、缓存策略 | 迁移脚本、压测、监控接入 |
-| **数据工程** | 数据源血缘、数据质量 SLA | 表分区策略、数据生命周期、指标口径、回刷策略 | 调度配置、数据质量 check |
-
-### 跨岗位协作场景（最常见也最容易踩坑）
-
-现实里一个 feature 经常横跨前后端。三种处理模式：
-
-| 模式 | 适用 | 实现 |
-|---|---|---|
-| **单 spec + 多 plan** | 小 feature，前后端有强耦合 | 一个 spec.md；`/speckit.plan` 跑两次（加 `--integration-options` 切 preset）产出 `plan-backend.md` + `plan-frontend.md` |
-| **多 spec + 契约对齐** | 中大型 feature | 为每端建独立 feature 目录，用 `contracts/` 作为前后端契约，通过 workflow 编排同步 |
-| **monorepo 模式** | 全栈工程师/小团队 | 允许多 preset 共存；`/speckit.plan` 时自动识别文件路径选 preset |
-
----
-
-## 三、公司推广落地 Plan（分 5 个阶段 × 6 个月）
-
-推广 AI coding 工具最大的阻力**不是技术**，是**人不愿改习惯**。所以 plan 核心是"每阶段都让核心痛点被解决，让人主动想用"。
-
-### 阶段总览
-
-| 阶段 | 时长 | 目标 | 关键交付 | 成功标志 |
-|---|---|---|---|---|
-| **P0 种子期** | 2-4 周 | 技术 PoC + 决策对齐 | 1 个 demo、1 份决策文档 | 核心决策层认可方向 |
-| **P1 试点期** | 4-8 周 | 1 个团队深度使用 | constitution + 基座 preset | 该团队 lead time 下降可量化 |
-| **P2 扩展期** | 8-12 周 | 3-5 个团队 + 基建成型 | 全部岗位 preset + 核心 extension | ≥50% 新 feature 走 spec-kit |
-| **P3 普及期** | 12-24 周 | 全研发覆盖 | 培训体系 + 度量 dashboard | 成为默认工作流 |
-| **P4 进化期** | 持续 | 根据数据迭代 | 版本化治理机制 | 季度迭代常态化 |
-
-### P0 种子期（第 1-4 周）：证明它能解决真问题
-
-**目标**：用一个**真实业务 feature** 完整跑通 SDD 流水线，给决策层看"same feature 用 spec-kit 前后的对比"。
-
-**动作清单**：
-
-- [ ] 选 **1 个"小而全"的业务 feature**（有前端、后端、DB、API，但不要太大）
-- [ ] 由 1 个**你信任的资深工程师**（非新人）操刀
-- [ ] 完整走 `/speckit.constitution` → `/speckit.specify` → `/speckit.clarify` → `/speckit.plan` → `/speckit.tasks` → `/speckit.implement`
-- [ ] 记录**每一步的耗时、发现的问题、生成的 artifact 质量**
-- [ ] 准备对照组：同等规模的历史 feature，统计"从需求到上线"时间、返工次数、PR 轮次
-- [ ] 产出**一份 1-2 页的决策文档**给管理层：解决什么、ROI 预估、投入需求、风险
-
-**产出**：
-1. 一份可演示的 demo feature
-2. 一份 `SPEC-KIT-ENTERPRISE-DECISION.md`：建议要不要推、推多大范围、预算需求
-
-**常见坑**：选太大的 feature（跑不完显得 spec-kit 低效）、选太"水"的 feature（显得 spec-kit 没必要）。选**中等复杂度、有跨端协作、以前踩过坑的 feature**最有说服力。
-
-### P1 试点期（第 5-12 周）：1 个团队深度使用
-
-**目标**：在一个完整的研发小组（5-10 人）里落地，形成**公司的 constitution + 基座 preset**。
-
-**动作清单**（按周排期）：
-
-| 周 | 动作 | 产出 |
-|---|---|---|
-| W1 | 和架构委员会、安全、DBA、QA 各 1 个人 workshop | `.specify/memory/constitution.md` v1 |
-| W2 | 核心工程师一起定 `company-base` preset（spec/plan/tasks 模板） | `company-base@1.0` preset |
-| W3 | 开发 `git-enterprise` extension（对接内部 GitLab + Jira） | 首个企业 extension |
-| W4-6 | 试点团队每个新 feature 都走 spec-kit，**Tech Lead 全程陪跑** | 3-5 个真实 feature 的完整 artifact |
-| W7 | 回顾会，收集痛点（模板哪里不合适？哪些步骤反而更慢？） | v1.1 迭代清单 |
-| W8 | 快速迭代 `company-base` 和 `git-enterprise` | v1.1 |
-
-**度量指标**（必须量化，否则推不动决策层）：
-
-- **Lead time**：需求接收 → 上线时长
-- **Rework rate**：PR 被打回次数 / 总 PR
-- **Spec 完整度**：新人看 spec 能独立上手的比例
-- **Bug 召回**：上线后 P1/P2 bug 数
-- **模板遵从率**：PR 模板字段填写完整度
-
-典型试点成果指标目标（基于业内经验）：lead time -15%~-30%、rework rate -40%+、spec 完整度 +50%+。
-
-### P2 扩展期（第 13-24 周）：3-5 个团队 + 基建成型
-
-**目标**：把"单团队能用"变成"多团队都能用"；岗位 preset 和 extension 成体系。
-
-**动作清单**：
-
-- [ ] **基础设施落地**
-  - 内部 GitLab 建 `spec-kit-enterprise` 组
-  - 建**内部 extension catalog** + **内部 preset catalog**（`specify extension catalog add https://gitlab.company.com/spec-kit/catalog.json`）
-  - 预装脚本：`specify init` 后一步把公司基座全装好
-- [ ] **岗位 preset 成套输出**：`ios-app` / `android-app` / `web-frontend` / `backend-service` 四个 preset v1
-- [ ] **核心 extension 成套输出**（优先级排序）：
-  1. `jira-sync`（需求双向同步）——影响面最大
-  2. `dba-review`（DDL 自动送审）——风险点最高
-  3. `sonar-trigger`（代码扫描）——质量门禁
-  4. `api-catalog-push`（API 自动上架）——下游最痛
-  5. 公司自定义 `security-gate`（法务/合规）
-- [ ] **编排 `company-standard-workflow`**：把 SOP 固化
-- [ ] **培训体系**
-  - 30 分钟入门视频
-  - 1 小时深入讲座（流水线、扩展原理）
-  - 分岗位 Q&A 文档
-  - Office Hour（每周 1 次答疑）
-
-**组织层面**：
-- 成立 **"Spec-Kit 治理小组"**（3-5 人：1 架构师、1 资深工程师、1 PM、1 安全、1 DBA），负责 constitution 和 preset 的变更评审
-- **每月 1 次迭代例会**：收集 feedback、评审变更、发版
-
-### P3 普及期（第 25-36 周）：全研发覆盖
-
-**目标**：让 spec-kit 成为**默认研发工作流**，而不是"可选流程"。
-
-**动作清单**：
-
-- [ ] **工具化门禁**：
-  - PR 模板检查：要求链接到对应的 `specs/NNN-xxx/` 目录
-  - CI 门禁：无 `plan.md` 的 PR 需要额外审批
-  - Jira 集成：需求创建时自动跑 `specify workflow run`
-- [ ] **数据驱动**：
-  - 建立**度量 dashboard**（Grafana/内部 BI）：覆盖率、lead time 趋势、rework rate
-  - 每月向管理层汇报数据
-- [ ] **激励机制**：
-  - 季度评选"最佳 spec 案例"
-  - 把"是否用 spec-kit"纳入新团队 onboarding checklist
-  - Tech Lead 的 OKR 里加入推广指标
-- [ ] **新人 onboarding**：入职培训加入 1 天 spec-kit 专题
-
-### P4 进化期（6 个月后持续）
-
-- **版本化治理**：constitution / preset / extension 都走半年迭代
-- **跨部门推广**：如果效果好，推给算法团队、测试团队、SRE 团队
-- **对外开源**（可选）：把打磨好的 preset 贡献给社区 catalog.community.json
-
-### 三条最容易翻车的警告
-
-1. **别试图一步到位把 constitution 写得完美**。v1 简陋没关系，关键是让它被真实 `/speckit.plan` 跑一遍，跑出痛点再改——**constitution 也是迭代的**。
-
-2. **别把"填模板"变成"填卷子"**。如果模板里有 30 个"必填"字段，工程师会敷衍填"N/A"。原则是：**每个字段必须有人真的会读**。DBA review 看 DB 章节、Security 看合规章节，有 reader 才有 writer 的严肃性。
-
-3. **别忽视 PM 侧的参与**。spec-kit 的 `/speckit.specify` 本质是 PM 和研发共建 spec。如果只有研发用，PM 还在用 Word/飞书文档写需求，会形成**两份需求**，比没用还糟。试点团队必须**把 PM 一起拉进来**。
-
----
-
-## 四、一张图：推广全景
-
-```mermaid
-flowchart LR
-    subgraph "治理层（季度迭代）"
-        G1[Spec-Kit 治理小组<br/>5 人]
-        G2[constitution.md<br/>公司红线]
-    end
-
-    subgraph "基建层（一次建好 + 版本迭代）"
-        B1[company-base preset]
-        B2[岗位 preset × 4-5]
-        B3[企业 extension × 5-8]
-        B4[company-workflow.yml]
-        B5[内部 catalog.json]
-    end
-
-    subgraph "使用层（全员）"
-        U1[PM: 用 /speckit.specify]
-        U2[研发: 用完整流水线]
-        U3[Tech Lead: 评审 + 推广]
-        U4[架构师: 维护 constitution]
-    end
-
-    subgraph "度量层（周/月）"
-        M1[Lead time]
-        M2[Rework rate]
-        M3[覆盖率]
-        M4[Bug 召回]
-    end
-
-    G1 --> G2
-    G2 --> B1
-    G1 -.治理.-> B1 & B2 & B3 & B4
-    B1 & B2 & B3 & B4 --> B5
-    B5 -.内部 catalog.-> U1 & U2 & U3 & U4
-    U1 & U2 & U3 --> M1 & M2 & M3 & M4
-    M1 & M2 & M3 & M4 -.反馈.-> G1
-```
-
----
-
-## 总结
-
-1. **扩展点选择**：别只盯着 Templates，你真正的杠杆在 **Constitution（硬门禁）+ Extensions（流程自动化）+ Workflows（SOP 编排）**，前者是规则、后两者是让规则"不费力就遵守"的放大器。
-2. **模板策略**：用 `company-base` + 5 个岗位 preset 的**两层继承**（`{CORE_TEMPLATE}` 占位符），而不是每个岗位一套从头写。
-3. **落地节奏**：P0 技术证明 → P1 单团队试点 → P2 多团队扩展 → P3 全员普及 → P4 持续进化；**关键是每阶段都有可量化指标**，而不是凭感觉推。
-
-如果要进一步细化，我建议下一步先**做 P0 的 demo feature 选型 + constitution v0.1 草稿**——这两件事做完你就能判断在贵公司推的可行性与节奏了。需要我帮你起草某一块（比如 constitution 的 skeleton、某个岗位 preset 的模板样例、或者某个 extension 的 `extension.yml` 示例）可以直接说。
+企业落地要避免“有人用 Cursor、有人用 Copilot、有人用 Claude”导致上下文规则不一致。建议先选 1 个主力 agent，在 context 文件中注入公司级 rules，例如代码风格、命名规范、注释语言、禁用 API 清单。

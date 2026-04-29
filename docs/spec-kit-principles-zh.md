@@ -2932,49 +2932,132 @@ specify workflow run speckit \
   --input integration=claude
 ```
 
-对应源码链路：
+它的运行时数据流更适合按参与者来看：用户只敲一次 `specify workflow run`，真正的编排发生在 `WorkflowEngine`；具体执行则交给 step 实现、integration 和外部 AI Agent CLI。
 
 ```mermaid
-flowchart TD
-    A["specify workflow run speckit"] --> B["WorkflowEngine.load_workflow('speckit')"]
-    B --> C["读取 .specify/workflows/speckit/workflow.yml"]
-    C --> D["WorkflowDefinition.from_yaml() 解析 YAML"]
-    D --> E["validate_workflow() 校验 workflow.id / inputs / steps"]
-    E --> F["_resolve_inputs() 合并 --input 与 default"]
-    F --> G["创建 RunState，生成 run_id"]
-    G --> H["持久化 workflow.yml / inputs.json / state.json"]
-    H --> I["_execute_steps() 顺序执行 steps"]
-    I --> J{"step type"}
-    J -->|默认 command| K["CommandStep.execute()"]
-    J -->|gate| L["GateStep.execute()"]
-    K --> M["integration.dispatch_command() 调 agent CLI"]
-    L --> N{"交互终端？"}
-    N -->|是| O["等待 approve / reject"]
-    N -->|否| P["返回 PAUSED"]
-    M --> Q["记录 step_results + log.jsonl"]
-    O --> Q
-    P --> R["保存 current_step_index，提示 resume"]
-    Q --> S{"还有下一步？"}
-    S -->|有| I
-    S -->|无| T["RunStatus.COMPLETED"]
+sequenceDiagram
+    participant U as 用户
+    participant CLI as specify CLI<br/>(Typer)
+    participant E as WorkflowEngine
+    participant FS as .specify 文件系统
+    participant REG as STEP_REGISTRY
+    participant STEP as Step 实现
+    participant AG as AI Agent CLI
+    participant TTY as 交互终端
+
+    U->>CLI: specify workflow run speckit<br/>--input spec=... --input integration=claude
+    CLI->>E: load_workflow("speckit")
+    E->>FS: 读取 .specify/workflows/speckit/workflow.yml
+    FS-->>E: workflow.yml
+    E->>E: WorkflowDefinition.from_yaml()
+
+    CLI->>E: validate(definition)
+    E->>E: validate_workflow()<br/>校验 workflow.id / inputs / steps / type
+
+    CLI->>E: execute(definition, inputs)
+    E->>E: _resolve_inputs()<br/>合并 --input 与 default
+    E->>FS: 创建 runs/run_id/<br/>写 workflow.yml / inputs.json / state.json
+
+    loop 顺序执行 steps
+        E->>FS: 保存 current_step_index / current_step_id
+        E->>FS: 追加 log.jsonl: step_started
+        E->>REG: 按 type 取 Step<br/>省略 type 时默认 command
+        REG-->>E: CommandStep / GateStep / ...
+
+        alt command step
+            E->>STEP: CommandStep.execute(config, StepContext)
+            STEP->>STEP: evaluate_expression()<br/>解析 {{ inputs.spec }}
+            STEP->>AG: integration.dispatch_command()<br/>例如 /speckit.specify ...
+            AG-->>STEP: exit_code / stdout / stderr
+            STEP-->>E: StepResult(COMPLETED 或 FAILED)
+        else gate step
+            E->>STEP: GateStep.execute(config, StepContext)
+            alt stdin 是 TTY
+                STEP->>TTY: 展示 message/options
+                TTY-->>STEP: approve / reject
+                STEP-->>E: StepResult(COMPLETED 或 FAILED)
+            else stdin 不是 TTY
+                STEP-->>E: StepResult(PAUSED)
+            end
+        end
+
+        E->>FS: 写 step_results / state.json / log.jsonl
+    end
+
+    alt 发生 PAUSED / FAILED / ABORTED
+        E-->>CLI: 返回当前 RunState
+        CLI-->>U: 打印 Status、Run ID<br/>暂停时提示 resume 命令
+    else 所有 steps 完成
+        E->>FS: 保存 RunStatus.COMPLETED
+        E-->>CLI: 返回最终 RunState
+        CLI-->>U: 打印 Status: completed、Run ID
+    end
 ```
+
+注意这里有一层非常重要的解耦：workflow YAML 只声明 `command: speckit.specify`、`type: gate` 这类意图；`WorkflowEngine` 只负责顺序编排、状态保存和 step 分发；真正怎么把 `speckit.specify` 变成 `/speckit.specify ...`、`/speckit-specify ...` 或某个 agent CLI 的非交互调用，是 integration 的职责。
 
 关键源码对象可以这样理解：
 
-- `WorkflowDefinition`：把 YAML 解析成 `id/name/version/inputs/steps`。
-- `RunState`：管理一次运行的状态，落盘到 `.specify/workflows/runs/<run_id>/`。
-- `StepContext`：执行时的上下文，包含 `inputs`、前面步骤的 `steps.<id>.output`、默认 integration/model/options。
+- `workflow_run()`：`specify workflow run` 的 Typer 入口，负责解析 `--input`、加载 workflow、调用 `engine.execute()` 并打印最终状态。
+- `WorkflowDefinition`：把 YAML 解析成 `id/name/version/inputs/steps`，并保留 workflow 级默认 `integration/model/options`。
+- `RunState`：管理一次运行的状态，落盘到 `.specify/workflows/runs/<run_id>/`，核心文件是 `workflow.yml`、`inputs.json`、`state.json` 和 `log.jsonl`。
+- `StepContext`：执行时传给每个 step 的上下文，包含 `inputs`、前面步骤的 `steps.<id>.output`、默认 integration/model/options、`project_root` 和 `run_id`。
 - `STEP_REGISTRY`：把 YAML 里的 `type` 映射到具体实现类。省略 `type` 时默认是 `command`。
-- `CommandStep`：解析 `{{ inputs.spec }}` 这类表达式，然后调用 integration 的 `dispatch_command()`。
-- `GateStep`：人工门禁。交互式环境里询问选择；CI/管线里因为没有 TTY，直接暂停等待后续 `resume`。
+- `CommandStep`：解析 `{{ inputs.spec }}` 这类表达式，找到 integration，然后调用 `dispatch_command()` 把 spec-kit 命令交给外部 AI Agent CLI。
+- `GateStep`：人工门禁。交互式环境里询问选择；CI/管线里因为没有 TTY，直接返回 `PAUSED`，等待后续 `resume`。
 
-`resume` 的原理也很直接：`WorkflowEngine.execute()` 每一步前后都会保存 `state.json`；暂停时 `current_step_index` 指向当前 gate。运行：
+暂停恢复是第二条数据流。`WorkflowEngine.execute()` 每一步前后都会保存 `state.json`；暂停时 `current_step_index` 指向当前 gate。运行：
 
 ```bash
 specify workflow resume <run_id>
 ```
 
-引擎会读取 `.specify/workflows/runs/<run_id>/state.json` 和当时复制进去的 `workflow.yml`，恢复 `inputs` 与已经完成的 `step_results`，然后从 `current_step_index` 对应的 step 重新执行。这样即使原始 workflow 文件被移动或修改，已启动的那次 run 仍可按当时的定义继续。
+恢复时序如下：
+
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant CLI as specify CLI<br/>(Typer)
+    participant E as WorkflowEngine
+    participant FS as .specify/workflows/runs/run_id
+    participant REG as STEP_REGISTRY
+    participant STEP as Step 实现
+
+    U->>CLI: specify workflow resume run_id
+    CLI->>E: resume(run_id)
+    E->>FS: 读取 state.json
+    FS-->>E: status / current_step_index<br/>current_step_id / step_results
+    E->>FS: 读取 inputs.json
+    FS-->>E: inputs
+
+    E->>FS: 优先读取本次运行快照 workflow.yml
+    alt 快照存在
+        FS-->>E: runs/run_id/workflow.yml
+    else 快照不存在
+        E->>FS: 回退读取已安装 workflow.yml
+        FS-->>E: .specify/workflows/workflow_id/workflow.yml
+    end
+
+    E->>E: WorkflowDefinition.from_yaml()
+    E->>E: 重建 StepContext<br/>inputs + 已完成 step_results
+    E->>FS: status 改为 RUNNING 并保存 state.json
+
+    E->>E: remaining_steps = steps[current_step_index:]
+    Note over E,STEP: gate 会被重新执行，以便重新询问用户；<br/>嵌套步骤暂停时会重跑父 step。
+
+    loop 从 current_step_index 继续
+        E->>REG: 按 type 取 Step
+        REG-->>E: GateStep / CommandStep / ...
+        E->>STEP: execute(config, StepContext)
+        STEP-->>E: StepResult(...)
+        E->>FS: 更新 step_results / state.json / log.jsonl
+    end
+
+    E-->>CLI: 返回最新 RunState
+    CLI-->>U: 打印恢复后的 status
+```
+
+这样即使原始 workflow 文件被移动或修改，已启动的那次 run 也优先按 `runs/<run_id>/workflow.yml` 里的快照继续；而 `state.json` 里的 `current_step_index` 和 `step_results` 则决定从哪里接着跑、哪些前置输出还能被后续 `{{ steps.<id>.output }}` 表达式引用。
 
 #### C.2.4 10 种 step 类型该怎么理解？
 
