@@ -34,7 +34,7 @@ sequenceDiagram
     end
     Dev->>Cursor: 检查 spec.md，补充澄清问题
     rect rgb(232, 248, 232)
-    Cursor->>Ext: after_specify: spec-artifact-publish + requirements-sync
+    Cursor->>Ext: after_specify: git-publish + requirements-sync
     Ext->>Git: 提交 spec.md 等需求产物并 push
     Ext->>Jira: 回写 spec 摘要和 Git 访问链接
     end
@@ -59,9 +59,10 @@ sequenceDiagram
     Templates-->>Cursor: 生成 tasks.md（实现任务、测试任务、评审任务、本地检查任务）
     end
     rect rgb(232, 248, 232)
-    Cursor->>Ext: after_tasks: git-commit + jira-issues-sync
+    Cursor->>Ext: after_tasks: git-commit + analyze
+	Ext->>Cursor: 整体核对spec / plan / tasks 三者是否一致
     Ext->>Git: 提交 plan/tasks 等设计产物并 push
-    Ext->>Jira: 将 tasks.md 拆成 Jira 子任务或更新看板
+
     end
 
     Note over Dev,Ext: 阶段 3：编码和测试
@@ -71,12 +72,13 @@ sequenceDiagram
     end
     Cursor-->>Dev: 按 tasks.md 实现代码、测试和文档
     rect rgb(232, 248, 232)
-    Cursor->>Ext: after_implement: test-coverage-gate，本地触发
+    Cursor->>Ext: after_implement: test-coverage-gate，code-review-subAgent
     Ext->>Ext: 执行本地测试命令并生成覆盖率报告
     Ext-->>Dev: 返回测试结果和覆盖率数据
+	Ext->>Cursor: 利用 AI 进行代码review
     end
-    Dev->>Git: 提交代码并 push，创建PR
-    Dev->>Jira: 关联 PR / 提交实现状态，进入评审流程
+    Dev->>Git: 提交代码并 push，使用create-git-pr skills规范化创建PR
+    Dev->>Jira: 关联 PR / 提交实现状态，进入QA测试流程
 ```
 
 颜色说明：
@@ -94,7 +96,7 @@ sequenceDiagram
 
 ## 二、基于全景图拆分的三阶段建设任务
 
-落地时不要一开始就做全量平台。建议先围绕“需求设计、计划和任务、编码和测试”三段，各自完成最小可用的模板和 extension，再用 demo 串起来验证。
+落地时不要一开始就做全量平台。建议先围绕“需求设计、计划和任务、编码和测试”三段，各自完成最小可用的模板和 Extension，再用 demo 串起来验证。
 
 ### 阶段 1：需求设计
 
@@ -112,12 +114,12 @@ sequenceDiagram
 
 **需要开发的 Extensions**：
 
-| Hook             | Extension               | 作用                                   |
-| ---------------- | ----------------------- | ------------------------------------ |
-| `before_specify` | `jira-pull`             | 输入 Jira 单号后自动拉取标题、描述、验收标准、附件         |
-| `before_specify` | `git-feature-branch`    | 自动创建或切换 `feature/JIRA-xxx` 分支        |
-| `after_specify`  | `spec-artifact-publish` | 将 `spec.md` 提交到远程 Git，生成可访问链接        |
-| `after_specify`  | `requirements-sync`     | 将 spec 摘要和链接同步回 Jira，避免 PM 和研发维护两份需求 |
+| Hook             | Extension            | 作用                                   |
+| ---------------- | -------------------- | ------------------------------------ |
+| `before_specify` | `jira-pull`          | 输入 Jira 单号后自动拉取标题、描述、验收标准、附件         |
+| `before_specify` | `git-feature-branch` | 按照DE规范自动创建或切换 `feature/JIRA-xxx` 分支  |
+| `after_specify`  | `git-publish`        | 将 `spec.md` 提交到远程 Git，并生成可访问链接       |
+| `after_specify`  | `requirements-sync`  | 将 spec 摘要和链接同步回 Jira，避免 PM 和研发维护两份需求 |
 
 **阶段完成标准**：
 
@@ -148,13 +150,12 @@ sequenceDiagram
 | `before_plan` | `arch-template-fetcher` | 根据项目类型拉取内部架构模板、技术组件文档和参考方案               |
 | `after_plan`  | `plan-review-subAgent`  | 自动检查 plan质量，以及是否缺少 DB、API、监控、性能、灰度、合规等章节 |
 | `after_tasks` | `git-commit`            | 将 `plan.md`、`tasks.md` 等设计产物单独提交，便于审计和回滚 |
-| `after_tasks` | `jira-issues-sync`      | 将 `tasks.md` 拆成 Jira 子任务或更新看板            |
+| `after_tasks` | `analyze`               | 整体核对spec / plan / tasks 三者是否一致           |
 
 **阶段完成标准**：
 
 - `plan.md` 能覆盖技术方案中的核心要点，而不是只写实现思路。
 - `tasks.md` 不只是开发 TODO，还包含测试、评审、本地检查和文档任务。
-- Jira 看板可以从 `tasks.md` 自动生成或更新，减少手工拆任务。
 
 ### 阶段 3：编码和测试
 
@@ -164,34 +165,35 @@ sequenceDiagram
 
 **需要定制的 Templates / Presets**：
 
-| 定制项                 | 内容                                                    |
-| ------------------- | ----------------------------------------------------- |
-| `tasks-template.md` | 明确每类任务的完成定义，例如测试通过、覆盖率达标、文档更新、API 契约同步                |
-| `quickstart.md` 约定  | 规定最小可复现验证路径，方便跑通主流程                                   |
+| 定制项                 | 内容                                                                         |
+| ------------------- | -------------------------------------------------------------------------- |
+| `tasks-template.md` | 明确每类任务的完成定义，例如测试通过、覆盖率达标、文档更新、API 契约同步                                     |
+| `quickstart.md` 约定  | 规定最小可复现验证路径，方便跑通主流程                                                        |
 | 岗位 preset           | 前端增加 E2E(跑通核心用户流程)/Lighthouse(检查页面性能/质量)，后端增加 contract test，移动端增加包体积和兼容性测试 |
 
 **需要开发的 Extensions / 脚本**：
 
 | Hook / 位置          | Extension 或脚本          | 作用                              |
 | ------------------ | ---------------------- | ------------------------------- |
-| `before_implement` | `ide-setup-check`      | 检查本地依赖、环境变量、SDK、测试工具是否齐全        |
 | `before_implement` | `internal-doc-fetcher` | 拉取内部组件、API 网关、SDK、脚手架文档         |
 | `after_implement`  | `test-coverage-gate`   | 在本地运行测试命令，生成覆盖率报告，不达标则返回失败      |
 | 本地脚本               | `coverage-report`      | 读取覆盖率结果并输出摘要，例如行覆盖率、分支覆盖率、未覆盖文件 |
-| 本地脚本               | `api-doc-check`        | 如有 API 变更，在本地检查接口文档是否同步更新       |
+| `after_implement`  | `code-review-subAgent` | review 生成的代码质量                  |
+| skills             | `create-git-pr`        | 为代码创建 PR，按照一定的格式规范。             |
 
 **阶段完成标准**：
 
 - AI 能按 `tasks.md` 完成代码和测试，不遗漏功能。
 - 覆盖率检查在本地运行，输出覆盖率报告和是否达标的结论。
-
+- code review可以发现明显的代码问题
+- 可以按照指定格式创建pr
 ---
 
 ## 三、Demo 验证：先证明流程有效，再推广
 
 前三阶段的基础能力完成后，不建议马上全公司推广。应该先选 1 个真实业务 demo，完整跑通从 Jira 到 spec、plan、tasks、implement、本地覆盖率检查的闭环，用数据证明效率提升。
 
-**建议周期**：2 周。
+**建议周期**：4 周。
 
 **Demo 选型原则**：
 
@@ -219,7 +221,7 @@ sequenceDiagram
 
 ## 整体 Timeline
 
-下面的时间线从 2026 年 5 月开始，以两周为一个时间刻度。它只覆盖正文第 2、3、4 部分：先完成三阶段基础能力建设，再做 1 个真实 demo 验证，最后进入团队试点、全研发覆盖和数据迭代。
+下面的时间线从 2026 年 5 月开始，以两周为一个时间刻度。先完成三阶段基础能力建设，再做 1 个真实 demo 验证。
 
 ```mermaid
 gantt
@@ -229,16 +231,16 @@ gantt
     tickInterval 2week
 
     section 二、三阶段基础能力建设
-    需求设计模板与 Jira 拉取打通           :p2_1, 2026-05-13, 14d
+    需求设计模板与 Jira 拉取打通           :p2_1, 2026-05-18, 14d
     spec artifact 提交与 Jira 回写          :p2_2, after p2_1, 14d
     Constitution 与 plan/tasks 模板定制     :p2_3, after p2_2, 28d
     本地覆盖率脚本与 implement hook         :p2_4, after p2_3, 14d
     三阶段最小闭环联调                      :p2_5, after p2_4, 14d
 
     section 三、Demo 验证
-    Demo feature 选型与历史对照数据准备     :p3_1, after p2_5, 14d
+    Demo feature 选型与历史对照数据准备     :p3_1, after p2_5, 7d
     跑通 specify/plan/tasks/implement 全流程 :p3_2, after p3_1, 14d
-    Demo 复盘与推广决策                     :p3_3, after p3_2, 14d
+    Demo 复盘与推广决策                     :p3_3, after p3_2, 7d
 ```
 
 这条路线的关键不是一次性把所有模板和扩展做完，而是先打通最小闭环，用真实 demo 证明效率提升，再把有效部分产品化、版本化、治理化。
@@ -254,12 +256,12 @@ gantt
 
 `.specify/memory/constitution.md` 适合放 `/speckit.plan` 阶段就能判断的设计和实现前置条件，例如：
 
-| 类别 | 例子 |
-|---|---|
-| 合规 | 敏感数据必须脱敏存储，关键数据必须有生命周期和留存说明 |
-| 安全 | 禁止明文存储密码、token、密钥，外部输入必须校验 |
-| 质量 | 核心链路必须有 contract test，关键模块覆盖率必须达到阈值 |
-| 架构 | 禁止跨库 JOIN，外部依赖必须有降级或超时策略 |
+| 类别  | 例子                                  |
+| --- | ----------------------------------- |
+| 合规  | 敏感数据必须脱敏存储，关键数据必须有生命周期和留存说明         |
+| 安全  | 禁止明文存储密码、token、密钥，外部输入必须校验          |
+| 质量  | 核心链路必须有 contract test，关键模块覆盖率必须达到阈值 |
+| 架构  | 禁止跨库 JOIN，外部依赖必须有降级或超时策略            |
 
 注意：Constitution 适合做设计期约束，不应该替代真实发布系统里的审批、灰度、变更窗口和生产运维控制。
 
@@ -366,16 +368,3 @@ Demo 通过后，再进入推广。节奏建议是：1 个团队深度使用，�
 - 模板和 extension 能根据数据持续变轻、变准。
 - 新人 onboarding 可以通过标准流程快速理解需求、计划和任务。
 - 管理层能看到效率指标，而不是只听“AI Coding 很好用”的主观反馈。
-
----
-
-## 五、整体逻辑检查与规划合理性
-
-整体规划是合理的，但需要注意几个边界：
-
-1. **先全景、再建设、再 demo、再推广**这个顺序是对的。原来直接从扩展点讲到推广，容易让读者不知道为什么要做这些 extension。现在先给研发流程全景图，后面每个定制任务都有来源。
-2. **Demo 应该放在基础能力之后、公司推广之前**。如果没有最小可用模板和 extension，demo 只能证明手工流程能跑；如果没有 demo 就推广，则无法证明流程真的提升效率。
-3. **三阶段建设不要无限扩张**。第一版只做核心链路：Jira 拉需求、生成 spec/plan/tasks、提交 artifact、同步 Jira、本地覆盖率检查。DBA 自动送审、API 文档上架可以作为第二批。
-4. **Constitution 不能替代真实审批和发布控制**。它只能在设计期提前暴露问题，生产发布仍然需要审批、灰度、回滚和变更窗口。
-5. **模板字段必须有读者**。如果 DBA 不看 DB 章节，安全不看合规章节，模板就会变成填空负担。每个必填项都应该对应一个 reviewer 或自动检查。
-6. **推广指标要提前定义**。至少要记录 lead time、PR 轮次、返工次数、需求澄清次数、线上 bug、开发满意度，否则无法判断是不是值得全公司推广。
