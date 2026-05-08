@@ -1,4 +1,4 @@
-# spec-kit 实现原理笔记（中文）
+# spec-kit 实现原理笔记
 
 > 本文整理 `specify init` + 9 条 `/speckit.*` 命令（constitution / specify / clarify / plan / tasks / analyze / checklist / implement / taskstoissues）的完整实现原理、**Extensions / Presets / Workflows 三条扩展线**、**`.specify/` 目录全景 + 4 级模板解析优先级栈**、**`specify` CLI 全部子命令**，以及 **spec-kit 仓库自身 CI/CD**，便于在阅读源码和日常使用时对照查阅。
 >
@@ -6,7 +6,7 @@
 
 ## 目录
 
-- [spec-kit 实现原理笔记（中文）](#spec-kit-实现原理笔记中文)
+- [spec-kit 实现原理笔记](#spec-kit-实现原理笔记)
   - [目录](#目录)
   - [一、`specify init . --ai cursor-agent` 的作用与原理](#一specify-init----ai-cursor-agent-的作用与原理)
     - [1.1 命令做了什么（一句话）](#11-命令做了什么一句话)
